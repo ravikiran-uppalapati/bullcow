@@ -41,6 +41,7 @@ def reset_game() -> None:
     st.session_state.llm_opponent_message = None
     st.session_state.llm_opponent_key = None
     st.session_state.gemini_chat_history = []
+    st.session_state.win_dialog_shown = None
 
 
 def ensure_session() -> None:
@@ -52,6 +53,8 @@ def ensure_session() -> None:
         st.session_state.llm_opponent_key = None
     if "gemini_chat_history" not in st.session_state:
         st.session_state.gemini_chat_history = []
+    if "win_dialog_shown" not in st.session_state:
+        st.session_state.win_dialog_shown = None
 
 
 def get_setting(name: str, default: str = "") -> str:
@@ -973,7 +976,11 @@ def render_human_result_dialog() -> None:
         return
 
     if feedback["won"]:
-        st.success(f"You solved my number: {st.session_state.secret}.")
+        st.session_state.win_dialog_shown = "human"
+        st.balloons()
+        st.success("Congratulations! You cracked the secret number.")
+        st.markdown(f"### Your winning guess was `{st.session_state.secret}`")
+        st.write(f"You solved it in **{len(st.session_state.player_history)}** turns.")
         button_label = "Start a new game"
     else:
         st.info(
@@ -988,6 +995,23 @@ def render_human_result_dialog() -> None:
         else:
             st.session_state.game_phase = next_phase_after_human_guess(False)
             st.session_state.human_feedback = None
+        st.rerun()
+
+
+@st.dialog("Winner!")
+def render_winner_dialog(winner: str, number: str, turns: int) -> None:
+    if winner == "human":
+        st.balloons()
+        st.success("Congratulations! You cracked the secret number.")
+        st.markdown(f"### Your winning guess was `{number}`")
+        st.write(f"You solved it in **{turns}** turns. Coach Agent is absolutely taking credit for this.")
+    else:
+        st.success("Opponent Agent solved your secret number.")
+        st.markdown(f"### The winning guess was `{number}`")
+        st.write(f"It solved the game in **{turns}** turns. Time for a revenge round.")
+
+    if st.button("Start a new game", use_container_width=True):
+        reset_game()
         st.rerun()
 
 
@@ -1177,6 +1201,9 @@ def render_human_turn() -> None:
 def render_agent_result() -> None:
     state = st.session_state.agent_state
     if state["status"] == "won":
+        if st.session_state.win_dialog_shown != "agent":
+            st.session_state.win_dialog_shown = "agent"
+            render_winner_dialog("agent", state["current_guess"], len(state["history"]))
         st.success(f"I solved your number: {state['current_guess']}.")
     else:
         st.error("The feedback does not match any valid 3-digit number.")
