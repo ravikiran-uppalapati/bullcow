@@ -102,6 +102,20 @@ def apply_settings_to_environment(settings: dict | None = None) -> None:
             os.environ[name] = str(value)
 
 
+def get_gemini_chat_copy() -> dict[str, str]:
+    return {
+        "title": "Ask Gemini During The Game",
+        "description": "Ask for strategy, rules, or why the agent made a move.",
+        "question_label": "Ask Gemini anything",
+        "question_placeholder": "Example: I guessed 427 and got 1 cow. What should I try next?",
+        "optional_section": "Optional: calculate bulls/cows",
+        "optional_caption": "Use this only when you want the app to calculate exact feedback for the current agent guess.",
+        "secret_label": "Your secret number for exact scoring",
+        "secret_help": "Must be a valid 3-digit number with unique digits. Leave blank for normal Gemini chat.",
+        "submit_label": "Send to Gemini",
+    }
+
+
 def render_game_styles() -> None:
     st.markdown(
         """
@@ -911,12 +925,13 @@ def render_langsmith_panel() -> None:
 
 
 def render_gemini_chat_panel() -> None:
+    copy = get_gemini_chat_copy()
     st.markdown('<div class="game-shell">', unsafe_allow_html=True)
     st.markdown(
-        """
+        f"""
         <div class="coach-panel">
-            <p class="coach-title">Ask Gemini During The Game</p>
-            <p>Ask for help with bulls/cows, strategy, or why the agent made a move.</p>
+            <p class="coach-title">{copy["title"]}</p>
+            <p>{copy["description"]}</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -925,16 +940,18 @@ def render_gemini_chat_panel() -> None:
     current_guess = st.session_state.agent_state.get("current_guess")
     with st.form("gemini_game_chat_form"):
         question = st.text_area(
-            "Chat with Gemini",
-            placeholder="Example: My number is 427. How many bulls and cows should I give?",
+            copy["question_label"],
+            placeholder=copy["question_placeholder"],
             height=96,
         )
-        secret = st.text_input(
-            "Optional exact secret number",
-            placeholder="427",
-            help="Only needed when you want exact bulls/cows for the current agent guess. Your chat question can be any length.",
-        )
-        submitted = st.form_submit_button("Ask Gemini")
+        with st.expander(copy["optional_section"], expanded=False):
+            st.caption(copy["optional_caption"])
+            secret = st.text_input(
+                copy["secret_label"],
+                placeholder="427",
+                help=copy["secret_help"],
+            )
+        submitted = st.form_submit_button(copy["submit_label"])
 
     if submitted:
         normalized_question = question.strip()
@@ -1214,19 +1231,19 @@ def render_referee_helper(state: dict) -> None:
         return
 
     with st.expander("Need help responding to the agent?", expanded=False):
-        st.caption("Enter your secret number and ask Gemini what bulls/cows to submit.")
+        st.caption("Use this calculator only when you want exact bulls/cows for the agent's current guess.")
         with st.form("referee_helper_form"):
             secret = st.text_input(
-                "Your secret number",
+                "Your secret number for exact scoring",
                 placeholder="427",
                 help="Used to calculate the exact response to the agent's current guess.",
             )
             question = st.text_area(
-                "Ask Gemini",
+                "Optional explanation request",
                 value="How many bulls and cows should I respond with?",
                 height=80,
             )
-            submitted = st.form_submit_button("Ask referee helper")
+            submitted = st.form_submit_button("Calculate response")
 
         if submitted:
             normalized_secret = secret.strip()
