@@ -107,6 +107,62 @@ def build_gemini_referee_prompt(
     )
 
 
+def build_gemini_chat_prompt(
+    question: str,
+    game_memory: dict | None = None,
+    exact_feedback: dict | None = None,
+) -> str:
+    if exact_feedback:
+        feedback_text = (
+            "Exact feedback available: "
+            f"{exact_feedback['bulls']} bulls, {exact_feedback['cows']} cows "
+            f"for agent guess {exact_feedback['agent_guess']}."
+        )
+    else:
+        feedback_text = "Exact feedback available: none."
+
+    return (
+        "You are Gemini Coach inside a Bulls and Cows game.\n"
+        "Answer the human like a helpful game companion: clear, playful, and concise.\n"
+        "Use the full session memory. If exact feedback is provided, treat it as the "
+        "source of truth and do not recalculate differently.\n"
+        "Do not reveal the app's secret number. Do not claim certainty where the "
+        "game clues do not support it.\n\n"
+        f"{format_game_memory_for_prompt(game_memory)}\n\n"
+        f"{feedback_text}\n"
+        f"Human question: {question}\n\n"
+        "Return a direct answer in at most four short sentences."
+    )
+
+
+def generate_gemini_chat_response(
+    question: str,
+    api_key: str | None,
+    model_name: str = DEFAULT_GEMINI_MODEL,
+    game_memory: dict | None = None,
+    exact_feedback: dict | None = None,
+    llm_factory=None,
+) -> dict:
+    fallback = "I can help with the game state. Add a Gemini API key for a conversational answer."
+    if exact_feedback:
+        fallback = (
+            f"Submit {exact_feedback['bulls']} bulls and {exact_feedback['cows']} cows "
+            f"for the agent guess {exact_feedback['agent_guess']}."
+        )
+    if not api_key:
+        return {"source": "deterministic", "message": fallback}
+
+    try:
+        llm = llm_factory() if llm_factory else _create_gemini_llm(api_key, model_name)
+        response = llm.invoke(build_gemini_chat_prompt(question, game_memory, exact_feedback))
+        message = getattr(response, "content", str(response)).strip()
+        if not message:
+            raise ValueError("Gemini returned an empty chat answer.")
+        return {"source": "gemini", "message": message}
+    except Exception as exc:
+        return {"source": "fallback", "message": fallback, "error": str(exc)}
+
+
 def generate_gemini_referee_help(
     secret: str,
     agent_guess: str,

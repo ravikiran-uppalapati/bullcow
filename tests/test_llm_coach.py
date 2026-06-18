@@ -1,11 +1,13 @@
 import unittest
 
 from bulls_cows.llm_coach import (
+    build_gemini_chat_prompt,
     build_gemini_coach_prompt,
     build_gemini_opponent_prompt,
     build_gemini_referee_prompt,
     format_game_memory_for_prompt,
     generate_gemini_agent_message,
+    generate_gemini_chat_response,
     generate_gemini_coach_tip,
     generate_gemini_referee_help,
 )
@@ -233,6 +235,47 @@ class LlmCoachTests(unittest.TestCase):
         self.assertEqual(result["source"], "gemini")
         self.assertEqual(result["message"], "Reply with 1 bull and 2 cows.")
         self.assertIn("427", fake_llm.prompt)
+
+    def test_chat_prompt_includes_question_and_game_memory(self):
+        memory = {
+            "phase": "agent_turn",
+            "agent": {"current_guess": "102", "candidate_count": 648},
+            "human": {"history": []},
+            "coach": {"suggested_guess": "103", "tip": "Start with different digits."},
+            "timeline": ["Agent turn 1 guessed 102 and got pending feedback."],
+        }
+
+        prompt = build_gemini_chat_prompt(
+            question="How should I think about this move?",
+            game_memory=memory,
+            exact_feedback={"bulls": 1, "cows": 1, "agent_guess": "102"},
+        )
+
+        self.assertIn("How should I think about this move?", prompt)
+        self.assertIn("Agent turn 1 guessed 102", prompt)
+        self.assertIn("Exact feedback available: 1 bulls, 1 cows", prompt)
+
+    def test_generate_chat_response_uses_injected_llm(self):
+        class FakeMessage:
+            content = "Give 1 bull and 1 cow, then use that clue for your next move."
+
+        class FakeLlm:
+            def invoke(self, prompt):
+                self.prompt = prompt
+                return FakeMessage()
+
+        fake_llm = FakeLlm()
+
+        result = generate_gemini_chat_response(
+            question="What should I do?",
+            api_key="test-key",
+            game_memory={"phase": "agent_turn", "timeline": []},
+            llm_factory=lambda: fake_llm,
+        )
+
+        self.assertEqual(result["source"], "gemini")
+        self.assertIn("Give 1 bull", result["message"])
+        self.assertIn("What should I do?", fake_llm.prompt)
 
 
 if __name__ == "__main__":
