@@ -15,9 +15,18 @@ def format_game_memory_for_prompt(game_memory: dict | None) -> str:
     human = game_memory.get("human", {})
     coach = game_memory.get("coach", {})
     timeline = game_memory.get("timeline", [])
+    coach_chat = game_memory.get("coach_chat", [])
     previous_guesses = coach.get("previous_guesses", [])
     previous_guess_text = ", ".join(previous_guesses) if previous_guesses else "none yet"
     timeline_text = "\n".join(f"- {item}" for item in timeline) if timeline else "- No turns yet."
+    coach_chat_text = (
+        "\n".join(
+            f"- Human asked: {item.get('question', '')} | Coach answered: {item.get('answer', '')}"
+            for item in coach_chat
+        )
+        if coach_chat
+        else "- No previous Coach chat."
+    )
 
     return (
         "Full session memory:\n"
@@ -30,7 +39,9 @@ def format_game_memory_for_prompt(game_memory: dict | None) -> str:
         f"Suggested human next guess: {coach.get('suggested_guess')}\n"
         f"Coach deterministic tip: {coach.get('tip')}\n"
         "Timeline:\n"
-        f"{timeline_text}"
+        f"{timeline_text}\n"
+        "Previous Coach chat:\n"
+        f"{coach_chat_text}"
     )
 
 
@@ -71,6 +82,7 @@ def build_gemini_opponent_prompt(
         "already chose your valid guess.\n"
         "React conversationally to this turn with playful sledging, confidence, "
         "and game-show energy.\n"
+        "Use the full session memory so your line reflects previous guesses and feedback.\n"
         "Keep it friendly: no insults, no bullying, no profanity, and do not claim "
         "to know the human's secret number.\n"
         "Mention the exact guess once.\n\n"
@@ -99,7 +111,9 @@ def build_gemini_chat_prompt(
     return (
         "You are the LLM Coach inside a Bulls and Cows game.\n"
         "Answer the human like a helpful game companion: clear, playful, and concise.\n"
-        "Use the full session memory and the human's question.\n"
+        "Use the full session memory, previous Coach chat, and the human's question.\n"
+        "Give proactive advice from the current memory; do not ask the user to repeat guesses, responses, or history already shown in memory.\n"
+        "Lead with the best next move or interpretation, then answer any additional question.\n"
         "Do not reveal the app's secret number. Do not claim certainty where the "
         "game clues do not support it.\n\n"
         f"{format_game_memory_for_prompt(game_memory)}\n\n"

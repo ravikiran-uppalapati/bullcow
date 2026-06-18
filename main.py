@@ -748,6 +748,7 @@ def build_current_game_memory(notes: dict | None = None) -> dict:
         st.session_state.player_history,
         coach_notes,
         st.session_state.game_phase,
+        st.session_state.gemini_chat_history,
     )
 
 

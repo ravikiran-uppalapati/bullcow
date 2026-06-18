@@ -8,9 +8,11 @@ def build_game_memory(
     player_history: list[dict[str, Any]],
     coach_notes: dict[str, Any],
     phase: str,
+    coach_chat_history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     agent_history = list(agent_state.get("history", []))
     human_history = list(player_history)
+    coach_chat = list(coach_chat_history or [])
 
     return {
         "phase": phase,
@@ -33,6 +35,14 @@ def build_game_memory(
             "used_digits": coach_notes.get("used_digits", []),
             "previous_guesses": coach_notes.get("previous_guesses", []),
         },
+        "coach_chat": [
+            {
+                "question": item.get("question", ""),
+                "answer": item.get("answer", ""),
+                "source": item.get("source", ""),
+            }
+            for item in coach_chat[-5:]
+        ],
         "timeline": _build_timeline(agent_history, human_history),
     }
 

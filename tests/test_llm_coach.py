@@ -213,6 +213,13 @@ class LlmCoachTests(unittest.TestCase):
                 "Agent turn 1 guessed 204 and got pending feedback.",
                 "Human turn 1 guessed 102 and got 0 bulls, 1 cows.",
             ],
+            "coach_chat": [
+                {
+                    "question": "What happened before?",
+                    "answer": "You guessed 102 and got 0 bulls, 1 cow.",
+                    "source": "ollama",
+                }
+            ],
         }
 
         prompt = build_gemini_chat_prompt(
@@ -223,6 +230,9 @@ class LlmCoachTests(unittest.TestCase):
         self.assertIn("How should I think about this move?", prompt)
         self.assertIn("Human previous guesses: 102", prompt)
         self.assertIn("Suggested human next guess: 103", prompt)
+        self.assertIn("Previous Coach chat", prompt)
+        self.assertIn("What happened before?", prompt)
+        self.assertIn("Give proactive advice from the current memory", prompt)
         self.assertNotIn("Exact feedback available", prompt)
 
     def test_generate_chat_response_uses_injected_llm(self):

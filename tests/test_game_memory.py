@@ -45,7 +45,15 @@ class GameMemoryTests(unittest.TestCase):
             "previous_guesses": ["427", "274"],
         }
 
-        memory = build_game_memory(agent_state, player_history, notes, "human_turn")
+        chat_history = [
+            {
+                "question": "What should I try next?",
+                "answer": "Try 407 because 7 was useful earlier.",
+                "source": "ollama",
+            }
+        ]
+
+        memory = build_game_memory(agent_state, player_history, notes, "human_turn", chat_history)
 
         self.assertEqual(memory["phase"], "human_turn")
         self.assertEqual(memory["agent"]["current_guess"], "345")
@@ -53,6 +61,8 @@ class GameMemoryTests(unittest.TestCase):
         self.assertEqual(len(memory["agent"]["history"]), 2)
         self.assertEqual(memory["human"]["history"][1]["guess"], "274")
         self.assertEqual(memory["coach"]["suggested_guess"], "407")
+        self.assertEqual(memory["coach_chat"][-1]["question"], "What should I try next?")
+        self.assertEqual(memory["coach_chat"][-1]["answer"], "Try 407 because 7 was useful earlier.")
         self.assertIn("agent turn 1", memory["timeline"][0].lower())
         self.assertIn("human turn 2", memory["timeline"][-1].lower())
 
