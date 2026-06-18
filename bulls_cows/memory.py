@@ -32,6 +32,8 @@ def build_game_memory(
             "attempts": coach_notes.get("attempts", len(human_history)),
             "suggested_guess": coach_notes.get("suggested_guess", ""),
             "tip": coach_notes.get("tip", ""),
+            "reasoning": coach_notes.get("reasoning", ""),
+            "possible_count": coach_notes.get("possible_count", 0),
             "used_digits": coach_notes.get("used_digits", []),
             "previous_guesses": coach_notes.get("previous_guesses", []),
         },

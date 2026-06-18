@@ -16,6 +16,18 @@ class UiCopyTests(unittest.TestCase):
     def test_main_screen_hides_advanced_agent_details_by_default(self):
         self.assertFalse(main.should_show_agent_toolbelt_on_main_screen())
 
+    def test_clue_board_html_is_not_indented_as_code_block(self):
+        html = main.build_clue_board_html(
+            [
+                {"turn": 1, "guess": "102", "response": "0 bulls, 1 cow"},
+                {"turn": 2, "guess": "103", "response": "0 bulls, 0 cows"},
+            ]
+        )
+
+        self.assertIn('<div class="clue-row">', html)
+        self.assertIn("102", html)
+        self.assertNotIn("\n        <div", html)
+
     def test_llm_status_copy_explains_missing_streamlit_secret(self):
         message = main.format_llm_status_message(
             configured=False,

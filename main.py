@@ -364,6 +364,15 @@ def render_game_styles() -> None:
             font-weight: 900;
             min-height: 3.35rem;
         }
+        .coach-reason {
+            margin-top: .55rem;
+            padding: .55rem .65rem;
+            border-radius: 8px;
+            background: #ffffff;
+            color: #065f46;
+            font-weight: 750;
+            border: 2px solid rgba(5, 150, 105, .18);
+        }
         .toolbelt-grid {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -718,6 +727,7 @@ def render_coach_panel() -> None:
         <div class="coach-panel">
             <p class="coach-title">Coach Agent Notes</p>
             <p><strong>Tip:</strong> {notes["tip"]}</p>
+            <p><strong>Why:</strong> {notes["reasoning"]}</p>
             <div class="coach-grid">
                 <div class="coach-chip">
                     <div class="hud-label">Attempts</div>
@@ -728,10 +738,11 @@ def render_coach_panel() -> None:
                     <div>{notes["suggested_guess"]}</div>
                 </div>
                 <div class="coach-chip">
-                    <div class="hud-label">Digits Tried</div>
-                    <div>{used_digits}</div>
+                    <div class="hud-label">Still Possible</div>
+                    <div>{notes["possible_count"]}</div>
                 </div>
             </div>
+            <div class="coach-reason">Digits tried: {used_digits}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -752,26 +763,30 @@ def build_current_game_memory(notes: dict | None = None) -> dict:
     )
 
 
-def render_clue_board(clue_notes: list[dict]) -> None:
+def build_clue_board_html(clue_notes: list[dict]) -> str:
     clue_rows = "".join(
-        f"""
-        <div class="clue-row">
-            <div class="clue-turn">Turn {item["turn"]}</div>
-            <div class="clue-guess">{item["guess"]}</div>
-            <div class="clue-response">{item["response"]}</div>
-        </div>
-        """
+        (
+            '<div class="clue-row">'
+            f'<div class="clue-turn">Turn {item["turn"]}</div>'
+            f'<div class="clue-guess">{item["guess"]}</div>'
+            f'<div class="clue-response">{item["response"]}</div>'
+            "</div>"
+        )
         for item in clue_notes
     )
     if not clue_rows:
-        clue_rows = """
-        <div class="clue-row">
-            <div class="clue-turn">Notes</div>
-            <div class="clue-guess">Empty</div>
-            <div class="clue-response">Make your first guess</div>
-        </div>
-        """
-    st.markdown(f'<div class="clue-board">{clue_rows}</div>', unsafe_allow_html=True)
+        clue_rows = (
+            '<div class="clue-row">'
+            '<div class="clue-turn">Notes</div>'
+            '<div class="clue-guess">Empty</div>'
+            '<div class="clue-response">Make your first guess</div>'
+            "</div>"
+        )
+    return f'<div class="clue-board">{clue_rows}</div>'
+
+
+def render_clue_board(clue_notes: list[dict]) -> None:
+    st.markdown(build_clue_board_html(clue_notes), unsafe_allow_html=True)
 
 
 def render_langsmith_panel() -> None:

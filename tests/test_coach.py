@@ -1,6 +1,7 @@
 import unittest
 
 from bulls_cows.coach import build_coach_notes
+from bulls_cows.game import CandidateFeedback, score_guess
 
 
 class CoachTests(unittest.TestCase):
@@ -53,6 +54,24 @@ class CoachTests(unittest.TestCase):
                 },
             ],
         )
+
+    def test_coach_suggests_a_guess_consistent_with_previous_feedback(self):
+        history = [
+            {"turn": 1, "guess": "102", "bulls": 0, "cows": 1},
+            {"turn": 2, "guess": "103", "bulls": 0, "cows": 0},
+            {"turn": 3, "guess": "104", "bulls": 0, "cows": 1},
+        ]
+
+        notes = build_coach_notes(history)
+
+        self.assertNotIn(notes["suggested_guess"], ["102", "103", "104"])
+        for item in history:
+            self.assertEqual(
+                score_guess(notes["suggested_guess"], item["guess"]),
+                CandidateFeedback(item["bulls"], item["cows"]),
+            )
+        self.assertGreater(notes["possible_count"], 0)
+        self.assertIn("consistent", notes["reasoning"].lower())
 
 
 if __name__ == "__main__":
