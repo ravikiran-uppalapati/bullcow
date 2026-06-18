@@ -108,10 +108,8 @@ def get_gemini_chat_copy() -> dict[str, str]:
         "description": "Ask for strategy, rules, or why the agent made a move.",
         "question_label": "Ask Coach",
         "question_placeholder": "Example: I guessed 427 and got 1 cow. What should I try next?",
-        "optional_section": "Exact bulls/cows helper",
-        "optional_caption": "Use this only when you want the app to calculate exact feedback for the current agent guess.",
-        "secret_label": "Your secret number for exact scoring",
-        "secret_help": "Must be a valid 3-digit number with unique digits. Leave blank for normal Gemini chat.",
+        "secret_label": "Optional secret number",
+        "secret_help": "Leave blank for normal Coach chat. Enter your 3-digit secret only if you want exact bulls/cows for the agent guess.",
         "submit_label": "Ask Coach",
     }
 
@@ -827,13 +825,11 @@ def render_gemini_chat_panel() -> None:
                 placeholder=copy["question_placeholder"],
                 height=96,
             )
-            with st.expander(copy["optional_section"], expanded=False):
-                st.caption(copy["optional_caption"])
-                secret = st.text_input(
-                    copy["secret_label"],
-                    placeholder="427",
-                    help=copy["secret_help"],
-                )
+            secret = st.text_input(
+                copy["secret_label"],
+                placeholder="Only if you want exact scoring, e.g. 427",
+                help=copy["secret_help"],
+            )
             submitted = st.form_submit_button(copy["submit_label"])
 
         if submitted:

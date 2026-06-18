@@ -9,7 +9,7 @@ class UiCopyTests(unittest.TestCase):
 
         self.assertEqual(copy["title"], "Ask Coach")
         self.assertEqual(copy["question_label"], "Ask Coach")
-        self.assertEqual(copy["optional_section"], "Exact bulls/cows helper")
+        self.assertEqual(copy["secret_label"], "Optional secret number")
         self.assertEqual(copy["submit_label"], "Ask Coach")
         self.assertNotIn("Gemini", copy["title"])
 
