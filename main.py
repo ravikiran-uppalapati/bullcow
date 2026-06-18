@@ -14,6 +14,7 @@ from bulls_cows.game import (
     score_guess,
 )
 from bulls_cows.llm_coach import DEFAULT_GEMINI_MODEL, generate_gemini_coach_tip
+from bulls_cows.runtime_config import apply_runtime_config
 from bulls_cows.session_flow import (
     next_phase_after_agent_feedback,
     next_phase_after_human_guess,
@@ -35,6 +36,9 @@ def ensure_session() -> None:
         reset_game()
     if "gemini_coach_tip" not in st.session_state:
         st.session_state.gemini_coach_tip = None
+    if "runtime_config_applied" not in st.session_state:
+        st.session_state.runtime_config_applied = False
+    apply_runtime_config(st.session_state.get("runtime_config", {}))
 
 
 def render_game_styles() -> None:
@@ -453,6 +457,17 @@ def render_game_styles() -> None:
             margin: .55rem 0;
             font-weight: 760;
         }
+        .setup-card {
+            border: 2px solid #fbbf24;
+            border-radius: 8px;
+            background: #fff7ed;
+            color: #3b0764;
+            padding: .75rem;
+            margin-bottom: .75rem;
+        }
+        .setup-card strong, .setup-card p {
+            color: #3b0764;
+        }
         .action-note {
             color: #dbeafe;
             font-weight: 700;
@@ -734,6 +749,58 @@ def render_langsmith_panel() -> None:
     )
 
 
+def render_api_setup_panel() -> None:
+    current_config = st.session_state.get("runtime_config", {})
+    gemini_ready = bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"))
+    langsmith_ready = bool(os.getenv("LANGSMITH_API_KEY"))
+
+    with st.expander("API setup: Gemini and LangSmith", expanded=not (gemini_ready and langsmith_ready)):
+        st.markdown(
+            """
+            <div class="setup-card">
+                <strong>Local session only.</strong>
+                Keys entered here are applied to this running Streamlit session and are not saved to GitHub.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        google_api_key = st.text_input(
+            "Gemini API key",
+            type="password",
+            value=current_config.get("google_api_key", ""),
+            placeholder="Paste your Gemini key",
+        )
+        langsmith_api_key = st.text_input(
+            "LangSmith API key",
+            type="password",
+            value=current_config.get("langsmith_api_key", ""),
+            placeholder="Paste your LangSmith key",
+        )
+        langsmith_project = st.text_input(
+            "LangSmith project",
+            value=current_config.get("langsmith_project", "bulls-and-cows-agent"),
+        )
+        langsmith_endpoint = st.text_input(
+            "LangSmith endpoint",
+            value=current_config.get("langsmith_endpoint", "https://eu.api.smith.langchain.com"),
+        )
+        if st.button("Apply API settings", use_container_width=True):
+            st.session_state.runtime_config = {
+                "google_api_key": google_api_key,
+                "langsmith_api_key": langsmith_api_key,
+                "langsmith_project": langsmith_project,
+                "langsmith_endpoint": langsmith_endpoint,
+            }
+            apply_runtime_config(st.session_state.runtime_config)
+            st.session_state.runtime_config_applied = True
+            st.session_state.gemini_coach_tip = None
+            st.rerun()
+
+        col_a, col_b = st.columns(2)
+        col_a.success("Gemini ready" if gemini_ready else "Gemini key not set")
+        col_b.success("LangSmith ready" if langsmith_ready else "LangSmith key not set")
+
+
 def render_history(title: str, history: list[dict]) -> None:
     st.subheader(title)
     if not history:
@@ -973,6 +1040,7 @@ def main() -> None:
     ensure_session()
     render_game_styles()
 
+    render_api_setup_panel()
     render_game_screen()
     col_a, col_b = st.columns([1, 1])
     with col_a:

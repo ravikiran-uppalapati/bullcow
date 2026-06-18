@@ -21,6 +21,10 @@ streamlit run main.py
 `GEMINI_API_KEY`. If no Gemini key is set, the deterministic Coach Agent still
 works.
 
+You can also paste Gemini and LangSmith keys directly into the app under
+**API setup: Gemini and LangSmith**. Those values are only applied to the local
+Streamlit session and are not saved in the repository.
+
 Optional Gemini model override:
 
 ```powershell
