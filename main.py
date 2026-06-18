@@ -31,6 +31,7 @@ from bulls_cows.telemetry import (
     record_llm_agent_message,
     run_traced_agent_feedback_turn,
 )
+from bulls_cows.toolbelt import build_agent_toolbelt
 
 
 def reset_game() -> None:
@@ -315,6 +316,51 @@ def render_game_styles() -> None:
             font-weight: 900;
             min-height: 3.35rem;
         }
+        .toolbelt-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: .45rem;
+            margin-top: .55rem;
+        }
+        .tool-card {
+            border: 2px solid rgba(124, 58, 237, .2);
+            border-radius: 8px;
+            background: #ffffff;
+            color: #3b0764;
+            padding: .5rem;
+            min-height: 5.2rem;
+        }
+        .tool-name {
+            color: #4c1d95;
+            font-weight: 950;
+            font-size: .82rem;
+            line-height: 1.1;
+        }
+        .tool-owner {
+            color: #7c2d12;
+            font-size: .68rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            margin-top: .22rem;
+        }
+        .tool-status {
+            display: inline-block;
+            margin-top: .32rem;
+            border-radius: 999px;
+            background: #ede9fe;
+            color: #5b21b6;
+            padding: .12rem .42rem;
+            font-size: .68rem;
+            font-weight: 950;
+            text-transform: uppercase;
+        }
+        .tool-evidence {
+            color: #064e3b;
+            font-size: .75rem;
+            font-weight: 800;
+            margin-top: .32rem;
+            line-height: 1.2;
+        }
         .memory-list {
             display: flex;
             gap: .4rem;
@@ -582,6 +628,9 @@ def render_game_styles() -> None:
                 font-size: 1.55rem;
             }
             .coach-grid {
+                grid-template-columns: 1fr;
+            }
+            .toolbelt-grid {
                 grid-template-columns: 1fr;
             }
             .clue-row {
@@ -952,6 +1001,40 @@ def render_gemini_chat_panel() -> None:
             st.markdown(f"**{item['source'].title()}:** {escape(item['answer'])}")
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_agent_toolbelt_panel() -> None:
+    notes = build_coach_notes(st.session_state.player_history)
+    game_memory = build_current_game_memory(notes)
+    tools = build_agent_toolbelt(
+        game_memory,
+        st.session_state.gemini_chat_history,
+        get_setting("LANGSMITH_TRACING").lower() == "true",
+        bool(get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")),
+    )
+    tool_cards = "".join(
+        f"""
+        <div class="tool-card">
+            <div class="tool-name">{escape(tool["label"])}</div>
+            <div class="tool-owner">{escape(tool["owner"])}</div>
+            <div class="tool-status">{escape(tool["status"])}</div>
+            <div class="tool-evidence">{escape(tool["evidence"])}</div>
+        </div>
+        """
+        for tool in tools
+    )
+    st.markdown(
+        f"""
+        <div class="game-shell">
+            <div class="coach-panel">
+                <p class="coach-title">Agent Toolbelt</p>
+                <p>These are the tools and skills the agents can use during the game.</p>
+            </div>
+            <div class="toolbelt-grid">{tool_cards}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def build_optional_exact_feedback(secret_text: str, agent_guess: str | None) -> dict | None:
@@ -1336,6 +1419,7 @@ def main() -> None:
     render_game_styles()
 
     render_gemini_chat_panel()
+    render_agent_toolbelt_panel()
     render_game_screen()
     col_a, col_b = st.columns([1, 1])
     with col_a:

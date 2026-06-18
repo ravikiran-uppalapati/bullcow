@@ -7,6 +7,11 @@ game talk and the coach's reasoning note using the full per-session game
 memory: agent guesses, human guesses, feedback, candidate counts, and the
 merged turn timeline.
 
+The UI also includes an **Agent Toolbelt** panel showing the tools and skills
+available to the agents, such as candidate generation, bulls/cows scoring,
+candidate filtering, next-guess selection, coach memory, Gemini chat, LLM
+reasoning, and LangSmith tracing.
+
 ## Run
 
 ```powershell
