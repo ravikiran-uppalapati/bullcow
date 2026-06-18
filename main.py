@@ -881,11 +881,9 @@ def render_gemini_chat_panel() -> None:
             height=96,
         )
         secret = st.text_input(
-            "Optional: my secret number",
-            max_chars=3,
-            type="password",
+            "Optional exact secret number",
             placeholder="427",
-            help="If you add this, the app calculates exact feedback for the agent's current guess.",
+            help="Only needed when you want exact bulls/cows for the current agent guess. Your chat question can be any length.",
         )
         submitted = st.form_submit_button("Ask Gemini")
 
@@ -897,46 +895,35 @@ def render_gemini_chat_panel() -> None:
         else:
             exact_feedback = None
             if normalized_secret:
-                if current_guess is None:
-                    st.warning("There is no active agent guess yet, so I cannot calculate bulls/cows.")
-                elif not is_valid_secret(normalized_secret):
-                    st.warning("Your secret must be a valid 3-digit number with unique digits.")
-                else:
-                    feedback = score_guess(normalized_secret, current_guess)
-                    exact_feedback = {
-                        "bulls": feedback.bulls,
-                        "cows": feedback.cows,
-                        "agent_guess": current_guess,
-                    }
+                exact_feedback = build_optional_exact_feedback(normalized_secret, current_guess)
 
-            if not normalized_secret or exact_feedback is not None:
-                api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
-                result = generate_gemini_chat_response(
-                    question=normalized_question,
-                    api_key=api_key,
-                    model_name=get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
-                    game_memory=build_current_game_memory(),
-                    exact_feedback=exact_feedback,
-                )
-                st.session_state.gemini_chat_history.append(
-                    {
-                        "question": normalized_question,
-                        "answer": result["message"],
-                        "source": result["source"],
-                        "exact_feedback": exact_feedback,
-                    }
-                )
-                record_llm_agent_message(
-                    "gemini_chat",
-                    result["source"],
-                    result["message"],
-                    {
-                        "question": normalized_question,
-                        "exact_feedback": exact_feedback,
-                        "game_memory": build_current_game_memory(),
-                    },
-                )
-                st.rerun()
+            api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
+            result = generate_gemini_chat_response(
+                question=normalized_question,
+                api_key=api_key,
+                model_name=get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
+                game_memory=build_current_game_memory(),
+                exact_feedback=exact_feedback,
+            )
+            st.session_state.gemini_chat_history.append(
+                {
+                    "question": normalized_question,
+                    "answer": result["message"],
+                    "source": result["source"],
+                    "exact_feedback": exact_feedback,
+                }
+            )
+            record_llm_agent_message(
+                "gemini_chat",
+                result["source"],
+                result["message"],
+                {
+                    "question": normalized_question,
+                    "exact_feedback": exact_feedback,
+                    "game_memory": build_current_game_memory(),
+                },
+            )
+            st.rerun()
 
     if st.session_state.gemini_chat_history:
         latest = st.session_state.gemini_chat_history[-1]
@@ -965,6 +952,18 @@ def render_gemini_chat_panel() -> None:
             st.markdown(f"**{item['source'].title()}:** {escape(item['answer'])}")
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+def build_optional_exact_feedback(secret_text: str, agent_guess: str | None) -> dict | None:
+    normalized = secret_text.strip()
+    if not normalized or agent_guess is None or not is_valid_secret(normalized):
+        return None
+    feedback = score_guess(normalized, agent_guess)
+    return {
+        "bulls": feedback.bulls,
+        "cows": feedback.cows,
+        "agent_guess": agent_guess,
+    }
 
 
 def render_history(title: str, history: list[dict]) -> None:
@@ -1136,9 +1135,7 @@ def render_referee_helper(state: dict) -> None:
         with st.form("referee_helper_form"):
             secret = st.text_input(
                 "Your secret number",
-                max_chars=3,
                 placeholder="427",
-                type="password",
                 help="Used to calculate the exact response to the agent's current guess.",
             )
             question = st.text_area(
