@@ -21,7 +21,106 @@ For the project submission document, see
 [`documents/project_submission.pdf`](documents/project_submission.pdf). A Markdown source version is available at
 [`documents/project_submission.md`](documents/project_submission.md).
 
-## Run
+## Local Setup With Ollama
+
+Use this path when you want the LLM Coach and Opponent messages to run from
+your own laptop without using Gemini, Nebius, or any hosted LLM quota.
+
+### 1. Install Python dependencies
+
+From the project folder:
+
+```powershell
+pip install -r requirements.txt
+```
+
+### 2. Install and start Ollama
+
+Install Ollama from [https://ollama.com](https://ollama.com), then pull a local
+chat model:
+
+```powershell
+ollama pull llama3.1
+```
+
+You can also use another local model, for example:
+
+```powershell
+ollama pull gemma3:4b
+```
+
+Keep Ollama running in the background. By default, the app expects Ollama at:
+
+```text
+http://localhost:11434
+```
+
+### 3. Configure local Streamlit secrets
+
+Create a file called `.streamlit/secrets.toml` in the project folder. This file
+is intentionally ignored by git so your API keys stay local.
+
+```toml
+OLLAMA_MODEL = "llama3.1"
+OLLAMA_BASE_URL = "http://localhost:11434"
+
+LANGSMITH_TRACING = "true"
+LANGSMITH_API_KEY = "your-langsmith-key"
+LANGSMITH_PROJECT = "bulls-and-cows-agent"
+LANGSMITH_ENDPOINT = "https://eu.api.smith.langchain.com"
+```
+
+If your LangSmith account is not in the EU region, use the default US endpoint:
+
+```toml
+LANGSMITH_ENDPOINT = "https://api.smith.langchain.com"
+```
+
+### 4. Run the game
+
+```powershell
+streamlit run main.py
+```
+
+Open the local preview:
+
+```text
+http://127.0.0.1:8501/
+```
+
+### 5. What Ollama does in this project
+
+Ollama is used as the local LLM behind the game personalities:
+
+- **Opponent Agent voice**: reacts playfully to the game history and the
+  current turn.
+- **Coach Agent voice**: explains likely next guesses, remembers previous
+  attempts, and gives reasoning using the full session history.
+
+The actual bulls/cows scoring and candidate filtering are still deterministic
+tools. This keeps the game correct while allowing the LLM to make the
+experience conversational and engaging.
+
+### 6. Streamlit Cloud note
+
+A deployed Streamlit app cannot directly call `localhost` on your laptop. That
+means local Ollama works for local demos, but not for the public Streamlit Cloud
+link. For a public deployment, configure a hosted LLM provider such as Nebius or
+Gemini in Streamlit secrets.
+
+Example Streamlit Cloud secrets:
+
+```toml
+LANGSMITH_TRACING = "true"
+LANGSMITH_API_KEY = "your-langsmith-key"
+LANGSMITH_PROJECT = "bulls-and-cows-agent"
+LANGSMITH_ENDPOINT = "https://eu.api.smith.langchain.com"
+
+NEBIUS_API_KEY = "your-nebius-token"
+NEBIUS_MODEL = "meta-llama/Meta-Llama-3.1-70B-Instruct"
+```
+
+## Quick Run With Environment Variables
 
 ```powershell
 pip install -r requirements.txt
@@ -33,18 +132,13 @@ $env:OLLAMA_MODEL="llama3.1"
 streamlit run main.py
 ```
 
-For local laptop demos, install Ollama, pull a model, and run the app:
+Alternative local Ollama environment variable setup:
 
 ```powershell
 ollama pull llama3.1
 $env:OLLAMA_MODEL="llama3.1"
-streamlit run main.py
-```
-
-Optional local override:
-
-```powershell
 $env:OLLAMA_BASE_URL="http://localhost:11434"
+streamlit run main.py
 ```
 
 For Streamlit Cloud, use a hosted provider because the cloud app cannot reach
