@@ -2,6 +2,59 @@
 
 This diagram explains how the project works for a presentation or project submission. The core idea is that the game is not a one-shot answer. It is an agent loop: guess, observe feedback, remember history, reduce candidates, choose the next move, and explain what happened.
 
+## Compact Agent Block Diagram
+
+Use this diagram when you want to explain what the agents are actually doing without showing every implementation detail.
+
+```mermaid
+flowchart LR
+    Human["Human Player<br/>guesses + feedback"]
+    UI["Streamlit Game UI"]
+
+    subgraph State["Shared Game State / Memory"]
+        Rules["Rules Engine<br/>valid numbers + bulls/cows scoring"]
+        Memory["Session Memory<br/>all guesses, feedback, candidate counts, coach chat"]
+    end
+
+    Opponent["Opponent Agent<br/>LangGraph workflow<br/>chooses next guess by filtering candidates"]
+    Coach["Coach Agent<br/>tracks human guesses<br/>suggests next move with reasoning"]
+    Ollama["LLM: Ollama<br/>gives natural language voice<br/>for opponent and coach"]
+    Smith["LangSmith<br/>observes traces, state, turns, and LLM calls"]
+
+    Human --> UI
+    UI --> Opponent
+    UI --> Coach
+
+    Opponent --> Rules
+    Rules --> Opponent
+    Opponent --> Memory
+
+    Coach --> Rules
+    Rules --> Coach
+    Coach --> Memory
+
+    Memory --> Ollama
+    Ollama --> Opponent
+    Ollama --> Coach
+
+    Opponent --> UI
+    Coach --> UI
+    UI --> Human
+
+    Opponent -. trace .-> Smith
+    Coach -. trace .-> Smith
+    Ollama -. trace .-> Smith
+    Memory -. trace .-> Smith
+```
+
+### How To Explain This Diagram
+
+- **Opponent Agent**: uses LangGraph plus the rules engine to make strategic guesses. It is not randomly chatting; it filters impossible numbers after each bulls/cows response.
+- **Coach Agent**: helps the human by remembering previous guesses, showing bulls/cows history, calculating possible remaining secrets, and explaining why a suggested guess makes sense.
+- **Ollama**: gives both agents a natural language voice. It does not secretly choose the game logic; it explains and reacts using the game memory.
+- **LangSmith**: records what happened inside the agent system, including turns, state updates, LangGraph steps, and LLM messages.
+- **Shared Memory**: keeps both agents grounded in the same history, so the user does not need to repeat previous guesses or feedback.
+
 ## Component Architecture
 
 ```mermaid
