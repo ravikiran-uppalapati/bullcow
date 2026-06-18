@@ -224,6 +224,14 @@ def build():
         "This is not a one-shot question-answer task. A player must guess, observe bulls/cows feedback, remember previous turns, eliminate impossible answers, and choose the next move. This makes it a good project for demonstrating an agentic reasoning loop.",
         styles["Body"],
     ))
+    story.append(p("Problem Requirements", styles["H2"]))
+    story.append(bullets([
+        "Maintain memory of all previous guesses and bulls/cows feedback.",
+        "Use tools to score guesses and remove impossible numbers.",
+        "Continue reasoning over multiple turns until a win or conflict.",
+        "Explain suggestions to the human player.",
+        "Make the internal decision process observable for project review.",
+    ], styles))
 
     section("2. High-Level System Architecture", story, styles)
     story.append(p(
@@ -289,6 +297,34 @@ def build():
         "For example, if the agent guesses 102 and receives 0 bulls and 1 cow, only numbers that would produce exactly that response against 102 remain in the candidate pool. This loop continues until the secret is solved or feedback becomes contradictory.",
         styles["Body"],
     ))
+    mapping = Table(
+        [
+            ["Requirement", "Project Solution"],
+            ["Remember previous guesses", "Session memory stores human turns, agent turns, Coach chat, and timeline."],
+            ["Score bulls/cows accurately", "Rules engine provides deterministic score_guess logic."],
+            ["Reduce impossible answers", "LangGraph opponent workflow and Coach Agent both filter candidate pools."],
+            ["Explain next actions", "Coach Agent produces suggested guess, possible count, and reasoning."],
+            ["Avoid black-box behavior", "LangSmith traces state, turns, LLM messages, and workflow execution."],
+        ],
+        colWidths=[2.05 * inch, 4.75 * inch],
+    )
+    mapping.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#065f46")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("LEADING", (0, 0), (-1, -1), 10.2),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#f0fdf4")),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#bbf7d0")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(Spacer(1, 0.08 * inch))
+    story.append(mapping)
 
     section("6. Why These Design Decisions Were Made", story, styles)
     story.append(bullets([
@@ -298,6 +334,34 @@ def build():
         "Streamlit was chosen for a fast interactive UI suitable for demos and project review.",
         "The rules engine remains deterministic so the game can be tested and explained.",
     ], styles))
+    decision = Table(
+        [
+            ["System", "Decision Rationale"],
+            ["LangGraph", "Multi-step reasoning workflow with state, feedback, branching, and final status detection."],
+            ["Ollama", "Primary local LLM to avoid free-tier quota issues and make the local demo reliable."],
+            ["LangSmith", "Observability, traceability, and explainability of the agent loop."],
+            ["Streamlit", "Fast interactive demo UI suitable for project submission and walkthrough."],
+            ["Rules Engine", "Correct, testable game logic kept separate from LLM-generated language."],
+        ],
+        colWidths=[1.55 * inch, 5.25 * inch],
+    )
+    decision.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#7c2d12")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("LEADING", (0, 0), (-1, -1), 10.2),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#fff7ed")),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#fed7aa")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(Spacer(1, 0.08 * inch))
+    story.append(decision)
 
     section("7. Observability With LangSmith", story, styles)
     story.append(p(

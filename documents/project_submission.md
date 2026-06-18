@@ -6,6 +6,16 @@ The project demonstrates how an agent can solve an iterative reasoning problem u
 
 This is not a one-shot question-answer task. A good player must guess, observe bulls/cows feedback, remember previous turns, eliminate impossible answers, and choose the next best move. The project uses this game to show why an agent architecture is useful: the system repeatedly reasons over state instead of producing one static answer.
 
+### Problem Requirements
+
+The problem requires the system to:
+
+- Maintain memory of all previous guesses and bulls/cows feedback.
+- Use tools to score guesses and remove impossible numbers.
+- Continue reasoning over multiple turns until a win or conflict.
+- Explain suggestions to the human player.
+- Make the internal decision process observable for project review.
+
 ## 2. High-Level System Architecture
 
 The system is composed of the following major components:
@@ -80,6 +90,16 @@ For example, if the agent guesses `102` and receives `0 bulls, 1 cow`, only numb
 
 The Coach Agent uses the same idea for the human side: it filters possible opponent secrets based on the human's previous guesses and feedback.
 
+### Requirement-to-Solution Mapping
+
+| Requirement | Project Solution |
+| --- | --- |
+| Remember previous guesses | Session memory stores human turns, agent turns, Coach chat, and timeline. |
+| Score bulls/cows accurately | Rules engine provides deterministic `score_guess` logic. |
+| Reduce impossible answers | LangGraph opponent workflow and Coach Agent both filter candidate pools. |
+| Explain next actions | Coach Agent produces suggested guess, possible count, and reasoning. |
+| Avoid black-box behavior | LangSmith traces state, turns, LLM messages, and workflow execution. |
+
 ## 6. Why These Systems Were Chosen
 
 ### Why LangGraph
@@ -121,6 +141,16 @@ This is important because agent systems should not be black boxes. LangSmith all
 ### Why Streamlit
 
 Streamlit was selected because it allows a fast, interactive, presentation-friendly application. The project needs a simple UI where users can play the game and observe the agent behavior quickly.
+
+### Decision Summary
+
+| System | Decision Rationale |
+| --- | --- |
+| LangGraph | Needed for a multi-step reasoning workflow with state, feedback, branching, and final status detection. |
+| Ollama | Chosen as the primary local LLM to avoid free-tier quota issues and make the local demo reliable. |
+| LangSmith | Needed to show observability, traceability, and explainability of the agent loop. |
+| Streamlit | Chosen for a fast interactive demo UI suitable for project submission and walkthrough. |
+| Deterministic rules engine | Keeps the game logic correct, testable, and separate from LLM-generated language. |
 
 ## 7. Important Implementation Details
 
