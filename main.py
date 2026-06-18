@@ -102,6 +102,18 @@ def should_show_agent_toolbelt_on_main_screen() -> bool:
     return False
 
 
+def is_gemini_configured() -> bool:
+    return bool(get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY"))
+
+
+def format_gemini_status_message(configured: bool, result: dict | None = None) -> str:
+    if not configured:
+        return "Gemini is not connected. In Streamlit secrets, add GOOGLE_API_KEY or GEMINI_API_KEY, then reboot the app."
+    if result and result.get("source") == "fallback" and result.get("error"):
+        return f"Gemini error: {result['error']}"
+    return "Gemini connected."
+
+
 def render_game_styles() -> None:
     st.markdown(
         """
@@ -746,6 +758,9 @@ def render_gemini_chat_panel() -> None:
     copy = get_gemini_chat_copy()
     with st.expander(copy["title"], expanded=False):
         st.caption(copy["description"])
+        gemini_configured = is_gemini_configured()
+        if not gemini_configured:
+            st.info(format_gemini_status_message(False))
         with st.form("coach_question_form"):
             question = st.text_area(
                 copy["question_label"],
@@ -771,6 +786,7 @@ def render_gemini_chat_panel() -> None:
                         "question": normalized_question,
                         "answer": result["message"],
                         "source": result["source"],
+                        "status": format_gemini_status_message(bool(api_key), result),
                     }
                 )
                 record_llm_agent_message(
@@ -786,6 +802,8 @@ def render_gemini_chat_panel() -> None:
 
         if st.session_state.gemini_chat_history:
             latest = st.session_state.gemini_chat_history[-1]
+            if latest.get("source") != "gemini":
+                st.warning(latest.get("status") or format_gemini_status_message(False))
             st.markdown(
                 f"""
                 <div class="coach-panel llm-tip">
