@@ -1,5 +1,6 @@
 import os
 import random
+from html import escape
 
 import streamlit as st
 
@@ -12,6 +13,7 @@ from bulls_cows.game import (
     is_valid_secret,
     score_guess,
 )
+from bulls_cows.llm_coach import DEFAULT_GEMINI_MODEL, generate_gemini_coach_tip
 from bulls_cows.session_flow import (
     next_phase_after_agent_feedback,
     next_phase_after_human_guess,
@@ -25,11 +27,14 @@ def reset_game() -> None:
     st.session_state.player_history = []
     st.session_state.game_phase = "intro"
     st.session_state.human_feedback = None
+    st.session_state.gemini_coach_tip = None
 
 
 def ensure_session() -> None:
     if "agent_state" not in st.session_state:
         reset_game()
+    if "gemini_coach_tip" not in st.session_state:
+        st.session_state.gemini_coach_tip = None
 
 
 def render_game_styles() -> None:
@@ -220,6 +225,9 @@ def render_game_styles() -> None:
         }
         .coach-panel h3, .coach-panel p, .coach-panel strong {
             color: #064e3b;
+        }
+        .llm-tip {
+            font-size: .95rem;
         }
         .coach-title {
             color: #065f46;
@@ -627,6 +635,7 @@ def render_rules_expander() -> None:
 def render_coach_panel() -> None:
     notes = build_coach_notes(st.session_state.player_history)
     used_digits = ", ".join(notes["used_digits"]) if notes["used_digits"] else "None yet"
+    gemini_tip = st.session_state.get("gemini_coach_tip")
 
     st.markdown(
         f"""
@@ -651,8 +660,39 @@ def render_coach_panel() -> None:
         """,
         unsafe_allow_html=True,
     )
+    if gemini_tip:
+        source = gemini_tip["source"].title()
+        safe_tip = escape(gemini_tip["tip"])
+        st.markdown(
+            f"""
+            <div class="coach-panel llm-tip">
+                <p class="coach-title">Gemini Coach</p>
+                <p><strong>{source}:</strong> {safe_tip}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    render_gemini_coach_button(notes)
     with st.expander("Coach notebook", expanded=bool(notes["clue_notes"])):
         render_clue_board(notes["clue_notes"])
+
+
+def render_gemini_coach_button(notes: dict) -> None:
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    model_name = os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+
+    if not api_key:
+        st.caption("Set GOOGLE_API_KEY or GEMINI_API_KEY to enable Gemini Coach.")
+        return
+
+    if st.button("Ask Gemini Coach", use_container_width=True):
+        with st.spinner("Gemini Coach is reading the clue notebook..."):
+            st.session_state.gemini_coach_tip = generate_gemini_coach_tip(
+                notes,
+                api_key=api_key,
+                model_name=model_name,
+            )
+        st.rerun()
 
 
 def render_clue_board(clue_notes: list[dict]) -> None:
@@ -680,11 +720,13 @@ def render_clue_board(clue_notes: list[dict]) -> None:
 def render_langsmith_panel() -> None:
     tracing = os.getenv("LANGSMITH_TRACING", "").lower() == "true"
     project = os.getenv("LANGSMITH_PROJECT", "bulls-and-cows-agent")
+    gemini_enabled = bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"))
 
     st.subheader("LangSmith")
     st.caption("Each agent guess turn is a LangGraph run you can inspect.")
     st.metric("Tracing", "Enabled" if tracing else "Not enabled")
     st.metric("Project", project)
+    st.metric("Gemini Coach", "Enabled" if gemini_enabled else "No API key")
     st.markdown(
         "- Watch `receive_feedback`, `filter_candidates`, and `choose_next_guess`.\n"
         "- Compare candidates before and after feedback.\n"
@@ -736,6 +778,7 @@ def render_agent_feedback_dialog() -> None:
     if submitted and feedback_is_valid:
         updated = apply_feedback_turn(state, CandidateFeedback(int(bulls), int(cows)))
         st.session_state.agent_state = updated
+        st.session_state.gemini_coach_tip = None
         st.session_state.game_phase = next_phase_after_agent_feedback(updated["status"])
         st.rerun()
     elif submitted:
@@ -889,6 +932,7 @@ def render_human_turn() -> None:
                 "cows": feedback.cows,
                 "won": won,
             }
+            st.session_state.gemini_coach_tip = None
             st.session_state.game_phase = "human_result"
             st.rerun()
 

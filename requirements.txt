@@ -1,3 +1,4 @@
 langgraph
 langsmith
+langchain-google-genai
 streamlit
