@@ -104,16 +104,20 @@ def apply_settings_to_environment(settings: dict | None = None) -> None:
 
 def get_gemini_chat_copy() -> dict[str, str]:
     return {
-        "title": "Ask Gemini During The Game",
+        "title": "Ask Coach",
         "description": "Ask for strategy, rules, or why the agent made a move.",
-        "question_label": "Ask Gemini anything",
+        "question_label": "Ask Coach",
         "question_placeholder": "Example: I guessed 427 and got 1 cow. What should I try next?",
-        "optional_section": "Optional: calculate bulls/cows",
+        "optional_section": "Exact bulls/cows helper",
         "optional_caption": "Use this only when you want the app to calculate exact feedback for the current agent guess.",
         "secret_label": "Your secret number for exact scoring",
         "secret_help": "Must be a valid 3-digit number with unique digits. Leave blank for normal Gemini chat.",
-        "submit_label": "Send to Gemini",
+        "submit_label": "Ask Coach",
     }
+
+
+def should_show_agent_toolbelt_on_main_screen() -> bool:
+    return False
 
 
 def render_game_styles() -> None:
@@ -761,11 +765,7 @@ def render_rules_expander() -> None:
 
 def render_coach_panel() -> None:
     notes = build_coach_notes(st.session_state.player_history)
-    game_memory = build_current_game_memory(notes)
-    maybe_generate_llm_coach_reasoning(notes, game_memory)
     used_digits = ", ".join(notes["used_digits"]) if notes["used_digits"] else "None yet"
-    gemini_tip = st.session_state.get("gemini_coach_tip")
-    coach_reasoning = st.session_state.get("llm_coach_reasoning")
 
     st.markdown(
         f"""
@@ -790,31 +790,7 @@ def render_coach_panel() -> None:
         """,
         unsafe_allow_html=True,
     )
-    if gemini_tip:
-        source = gemini_tip["source"].title()
-        safe_tip = escape(gemini_tip["tip"])
-        st.markdown(
-            f"""
-            <div class="coach-panel llm-tip">
-                <p class="coach-title">Gemini Coach</p>
-                <p><strong>{source}:</strong> {safe_tip}</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    if coach_reasoning:
-        source = coach_reasoning["source"].title()
-        safe_message = escape(coach_reasoning["message"])
-        st.markdown(
-            f"""
-            <div class="coach-panel llm-tip">
-                <p class="coach-title">Live Coach Agent</p>
-                <p><strong>{source} reasoning:</strong> {safe_message}</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    render_gemini_coach_button(notes)
+    render_gemini_chat_panel()
     with st.expander("Coach notebook", expanded=bool(notes["clue_notes"])):
         render_clue_board(notes["clue_notes"])
 
@@ -926,98 +902,86 @@ def render_langsmith_panel() -> None:
 
 def render_gemini_chat_panel() -> None:
     copy = get_gemini_chat_copy()
-    st.markdown('<div class="game-shell">', unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div class="coach-panel">
-            <p class="coach-title">{copy["title"]}</p>
-            <p>{copy["description"]}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    current_guess = st.session_state.agent_state.get("current_guess")
-    with st.form("gemini_game_chat_form"):
-        question = st.text_area(
-            copy["question_label"],
-            placeholder=copy["question_placeholder"],
-            height=96,
-        )
-        with st.expander(copy["optional_section"], expanded=False):
-            st.caption(copy["optional_caption"])
-            secret = st.text_input(
-                copy["secret_label"],
-                placeholder="427",
-                help=copy["secret_help"],
+    with st.expander(copy["title"], expanded=False):
+        st.caption(copy["description"])
+        current_guess = st.session_state.agent_state.get("current_guess")
+        with st.form("coach_question_form"):
+            question = st.text_area(
+                copy["question_label"],
+                placeholder=copy["question_placeholder"],
+                height=96,
             )
-        submitted = st.form_submit_button(copy["submit_label"])
+            with st.expander(copy["optional_section"], expanded=False):
+                st.caption(copy["optional_caption"])
+                secret = st.text_input(
+                    copy["secret_label"],
+                    placeholder="427",
+                    help=copy["secret_help"],
+                )
+            submitted = st.form_submit_button(copy["submit_label"])
 
-    if submitted:
-        normalized_question = question.strip()
-        normalized_secret = secret.strip()
-        if not normalized_question:
-            st.warning("Type a question for Gemini first.")
-        else:
-            exact_feedback = None
-            if normalized_secret:
-                exact_feedback = build_optional_exact_feedback(normalized_secret, current_guess)
+        if submitted:
+            normalized_question = question.strip()
+            normalized_secret = secret.strip()
+            if not normalized_question:
+                st.warning("Type a question for Coach first.")
+            else:
+                exact_feedback = None
+                if normalized_secret:
+                    exact_feedback = build_optional_exact_feedback(normalized_secret, current_guess)
 
-            api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
-            result = generate_gemini_chat_response(
-                question=normalized_question,
-                api_key=api_key,
-                model_name=get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
-                game_memory=build_current_game_memory(),
-                exact_feedback=exact_feedback,
+                api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
+                result = generate_gemini_chat_response(
+                    question=normalized_question,
+                    api_key=api_key,
+                    model_name=get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
+                    game_memory=build_current_game_memory(),
+                    exact_feedback=exact_feedback,
+                )
+                st.session_state.gemini_chat_history.append(
+                    {
+                        "question": normalized_question,
+                        "answer": result["message"],
+                        "source": result["source"],
+                        "exact_feedback": exact_feedback,
+                    }
+                )
+                record_llm_agent_message(
+                    "coach_chat",
+                    result["source"],
+                    result["message"],
+                    {
+                        "question": normalized_question,
+                        "exact_feedback": exact_feedback,
+                        "game_memory": build_current_game_memory(),
+                    },
+                )
+                st.rerun()
+
+        if st.session_state.gemini_chat_history:
+            latest = st.session_state.gemini_chat_history[-1]
+            if latest.get("exact_feedback"):
+                feedback = latest["exact_feedback"]
+                st.success(
+                    f"Exact response: {feedback['bulls']} bulls, {feedback['cows']} cows "
+                    f"for agent guess {feedback['agent_guess']}."
+                )
+            st.markdown(
+                f"""
+                <div class="coach-panel llm-tip">
+                    <p class="coach-title">Coach Answer</p>
+                    <p>{escape(latest["answer"])}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-            st.session_state.gemini_chat_history.append(
-                {
-                    "question": normalized_question,
-                    "answer": result["message"],
-                    "source": result["source"],
-                    "exact_feedback": exact_feedback,
-                }
-            )
-            record_llm_agent_message(
-                "gemini_chat",
-                result["source"],
-                result["message"],
-                {
-                    "question": normalized_question,
-                    "exact_feedback": exact_feedback,
-                    "game_memory": build_current_game_memory(),
-                },
-            )
-            st.rerun()
 
-    if st.session_state.gemini_chat_history:
-        latest = st.session_state.gemini_chat_history[-1]
-        if latest.get("exact_feedback"):
-            feedback = latest["exact_feedback"]
-            st.success(
-                f"Exact response: {feedback['bulls']} bulls, {feedback['cows']} cows "
-                f"for agent guess {feedback['agent_guess']}."
-            )
-        source = latest["source"].title()
-        st.markdown(
-            f"""
-            <div class="coach-panel llm-tip">
-                <p class="coach-title">{source} Answer</p>
-                <p>{escape(latest["answer"])}</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with st.expander("Gemini chat history", expanded=False):
-        if not st.session_state.gemini_chat_history:
-            st.caption("No chat yet.")
-        for item in reversed(st.session_state.gemini_chat_history[-5:]):
-            st.markdown(f"**You:** {escape(item['question'])}")
-            st.markdown(f"**{item['source'].title()}:** {escape(item['answer'])}")
-
-    st.markdown("</div>", unsafe_allow_html=True)
+        with st.expander("Previous coach answers", expanded=False):
+            if not st.session_state.gemini_chat_history:
+                st.caption("No questions yet.")
+            for item in reversed(st.session_state.gemini_chat_history[-5:]):
+                st.markdown(f"**You:** {escape(item['question'])}")
+                st.markdown(f"**Coach:** {escape(item['answer'])}")
 
 
 def render_agent_toolbelt_panel() -> None:
@@ -1214,8 +1178,6 @@ def render_agent_turn() -> None:
             unsafe_allow_html=True,
         )
         render_number_tiles(state["current_guess"])
-
-    render_referee_helper(state)
 
     if st.button("Enter bulls and cows for my guess", use_container_width=True):
         render_agent_feedback_dialog()
@@ -1435,8 +1397,6 @@ def main() -> None:
     ensure_session()
     render_game_styles()
 
-    render_gemini_chat_panel()
-    render_agent_toolbelt_panel()
     render_game_screen()
     col_a, col_b = st.columns([1, 1])
     with col_a:
@@ -1446,7 +1406,8 @@ def main() -> None:
     with col_b:
         st.caption("LangSmith is backstage for the demo, not part of the game board.")
 
-    with st.expander("Backstage: LangSmith trace panel", expanded=False):
+    with st.expander("Demo details: tools and traces", expanded=False):
+        render_agent_toolbelt_panel()
         render_langsmith_panel()
 
 
