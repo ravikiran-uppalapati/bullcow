@@ -454,75 +454,6 @@ def render_game_styles() -> None:
         .game-hero {
             background: #f8fafc;
         }
-        .countdown {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: .5rem;
-            margin: .75rem 0 1rem 0;
-        }
-        .countdown div {
-            border: 1px solid #d6dde8;
-            border-radius: 8px;
-            text-align: center;
-            padding: .8rem .25rem;
-            font-size: 1.35rem;
-            font-weight: 800;
-            background: white;
-            color: #111827;
-        }
-        .stage-countdown {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: .6rem;
-            margin-top: 1rem;
-            min-height: 4.1rem;
-        }
-        .countdown-caption {
-            text-align: center;
-            color: #7c2d12;
-            font-weight: 950;
-            text-transform: uppercase;
-            margin-top: .9rem;
-        }
-        .stage-countdown div {
-            border: 3px solid #ffffff;
-            border-radius: 8px;
-            padding: .85rem .35rem;
-            text-align: center;
-            font-size: 1.65rem;
-            font-weight: 950;
-            color: #ffffff;
-            background: linear-gradient(180deg, #fb7185, #db2777);
-            box-shadow: 0 8px 0 rgba(136, 19, 55, .25), inset 0 -5px 0 rgba(0, 0, 0, .15);
-            opacity: .2;
-            transform: translateY(12px) scale(.82);
-            animation: count-pop 3.2s ease-in-out infinite;
-        }
-        .stage-countdown div:nth-child(1) { animation-delay: 0s; }
-        .stage-countdown div:nth-child(2) { animation-delay: .55s; }
-        .stage-countdown div:nth-child(3) { animation-delay: 1.1s; }
-        .stage-countdown div:nth-child(4) {
-            animation-delay: 1.65s;
-            background: linear-gradient(180deg, #34d399, #16a34a);
-        }
-        @keyframes count-pop {
-            0%, 12% {
-                opacity: .2;
-                transform: translateY(12px) scale(.82) rotate(-2deg);
-                filter: brightness(.85);
-            }
-            18%, 34% {
-                opacity: 1;
-                transform: translateY(-8px) scale(1.12) rotate(1deg);
-                filter: brightness(1.18);
-                box-shadow: 0 13px 0 rgba(136, 19, 55, .25), 0 0 28px rgba(251, 191, 36, .72), inset 0 -5px 0 rgba(0, 0, 0, .15);
-            }
-            42%, 100% {
-                opacity: .35;
-                transform: translateY(0) scale(.94);
-                filter: brightness(.95);
-            }
-        }
         .guess-card {
             padding: 1rem;
             margin: .75rem 0;
@@ -659,21 +590,6 @@ def render_game_styles() -> None:
             }
         }
         </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_countdown() -> None:
-    st.markdown(
-        """
-        <div class="countdown-caption">Ready... set...</div>
-        <div class="stage-countdown">
-            <div>1</div>
-            <div>2</div>
-            <div>3</div>
-            <div>GO</div>
-        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1131,7 +1047,6 @@ def render_intro_screen() -> None:
         unsafe_allow_html=True,
     )
     render_coach_panel()
-    render_countdown()
     if st.button("Start game", use_container_width=True):
         st.session_state.game_phase = start_game_phase()
         st.rerun()
