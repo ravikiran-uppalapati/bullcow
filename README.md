@@ -17,6 +17,10 @@ reasoning, and LangSmith tracing.
 For a presentation-friendly architecture diagram, see
 [`documents/architecture.md`](documents/architecture.md).
 
+For the project submission document, see
+[`documents/project_submission.pdf`](documents/project_submission.pdf). A Markdown source version is available at
+[`documents/project_submission.md`](documents/project_submission.md).
+
 ## Run
 
 ```powershell
