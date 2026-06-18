@@ -308,6 +308,33 @@ class LlmCoachTests(unittest.TestCase):
         self.assertEqual(result["message"], "Nebius coach is online.")
         self.assertEqual(calls, [("nebius", "meta-llama/Meta-Llama-3.1-70B-Instruct")])
 
+    def test_generate_chat_response_uses_ollama_without_api_key(self):
+        class FakeMessage:
+            content = "Local coach is online."
+
+        class FakeLlm:
+            def invoke(self, prompt):
+                return FakeMessage()
+
+        calls = []
+
+        def fake_factory(provider, model_name):
+            calls.append((provider, model_name))
+            return FakeLlm()
+
+        result = generate_gemini_chat_response(
+            question="Can you coach locally?",
+            api_key="",
+            model_name="llama3.1",
+            provider="ollama",
+            base_url="http://localhost:11434",
+            llm_factory=fake_factory,
+        )
+
+        self.assertEqual(result["source"], "ollama")
+        self.assertEqual(result["message"], "Local coach is online.")
+        self.assertEqual(calls, [("ollama", "llama3.1")])
+
 
 if __name__ == "__main__":
     unittest.main()

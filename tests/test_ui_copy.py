@@ -22,7 +22,7 @@ class UiCopyTests(unittest.TestCase):
             result={"source": "deterministic"},
         )
 
-        self.assertIn("Streamlit secrets", message)
+        self.assertIn("local Ollama", message)
         self.assertIn("NEBIUS_API_KEY", message)
 
     def test_llm_status_copy_surfaces_runtime_errors(self):

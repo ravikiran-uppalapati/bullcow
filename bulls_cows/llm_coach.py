@@ -4,6 +4,7 @@ from urllib import request
 
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
 DEFAULT_NEBIUS_BASE_URL = "https://api.studio.nebius.com/v1"
+DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 
 
 def format_game_memory_for_prompt(game_memory: dict | None) -> str:
@@ -114,7 +115,7 @@ def generate_gemini_chat_response(
     llm_factory=None,
 ) -> dict:
     fallback = "I can help with the game state. Add a Gemini API key for a conversational answer."
-    if not api_key:
+    if not api_key and provider != "ollama":
         return {"source": "deterministic", "message": fallback}
 
     try:
@@ -149,7 +150,7 @@ def generate_gemini_agent_message(
     llm_factory=None,
 ) -> dict:
     fallback = payload.get("fallback", "")
-    if not api_key:
+    if not api_key and provider != "ollama":
         return {"source": "deterministic", "message": fallback}
 
     try:
@@ -188,7 +189,7 @@ def generate_gemini_coach_tip(
     game_memory: dict | None = None,
     llm_factory=None,
 ) -> dict:
-    if not api_key:
+    if not api_key and provider != "ollama":
         return {"source": "deterministic", "tip": notes.get("tip", "")}
 
     try:
@@ -223,6 +224,8 @@ def _create_llm_with_model(
                 return llm_factory(), model_name
     if provider == "nebius":
         return _NebiusChatLLM(api_key, model_name, base_url), model_name
+    if provider == "ollama":
+        return _OllamaChatLLM(model_name, base_url or DEFAULT_OLLAMA_BASE_URL), model_name
     return _create_gemini_llm(api_key, model_name), model_name
 
 
@@ -300,4 +303,30 @@ class _NebiusChatLLM:
         with request.urlopen(req, timeout=30) as response:
             data = json.loads(response.read().decode("utf-8"))
         content = data["choices"][0]["message"]["content"]
+        return SimpleNamespace(content=content)
+
+
+class _OllamaChatLLM:
+    def __init__(self, model_name: str, base_url: str = DEFAULT_OLLAMA_BASE_URL):
+        self.model_name = model_name
+        self.base_url = base_url.rstrip("/")
+
+    def invoke(self, prompt: str):
+        payload = json.dumps(
+            {
+                "model": self.model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "options": {"temperature": 0.4},
+            }
+        ).encode("utf-8")
+        req = request.Request(
+            f"{self.base_url}/api/chat",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with request.urlopen(req, timeout=60) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        content = data["message"]["content"]
         return SimpleNamespace(content=content)

@@ -85,6 +85,8 @@ def apply_settings_to_environment(settings: dict | None = None) -> None:
         "NEBIUS_API_KEY",
         "NEBIUS_BASE_URL",
         "NEBIUS_MODEL",
+        "OLLAMA_BASE_URL",
+        "OLLAMA_MODEL",
     ]:
         value = secret_values.get(name)
         if value and not os.getenv(name):
@@ -106,6 +108,16 @@ def should_show_agent_toolbelt_on_main_screen() -> bool:
 
 
 def get_llm_settings() -> dict[str, str]:
+    ollama_model = get_setting("OLLAMA_MODEL")
+    ollama_base_url = get_setting("OLLAMA_BASE_URL")
+    if ollama_model or ollama_base_url:
+        return {
+            "provider": "ollama",
+            "api_key": "",
+            "model": ollama_model or "llama3.1",
+            "base_url": ollama_base_url or "http://localhost:11434",
+            "configured": True,
+        }
     nebius_key = get_setting("NEBIUS_API_KEY")
     if nebius_key:
         return {
@@ -113,6 +125,7 @@ def get_llm_settings() -> dict[str, str]:
             "api_key": nebius_key,
             "model": get_setting("NEBIUS_MODEL", "meta-llama/Meta-Llama-3.1-70B-Instruct"),
             "base_url": get_setting("NEBIUS_BASE_URL", "https://api.studio.nebius.com/v1"),
+            "configured": True,
         }
     gemini_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
     return {
@@ -120,16 +133,17 @@ def get_llm_settings() -> dict[str, str]:
         "api_key": gemini_key,
         "model": get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
         "base_url": "",
+        "configured": bool(gemini_key),
     }
 
 
 def is_llm_configured() -> bool:
-    return bool(get_llm_settings()["api_key"])
+    return bool(get_llm_settings()["configured"])
 
 
 def format_llm_status_message(configured: bool, result: dict | None = None) -> str:
     if not configured:
-        return "LLM Coach is not connected. In Streamlit secrets, add NEBIUS_API_KEY, GOOGLE_API_KEY, or GEMINI_API_KEY, then reboot the app."
+        return "LLM Coach is not connected. For local Ollama, set OLLAMA_MODEL. For Streamlit Cloud, add NEBIUS_API_KEY, GOOGLE_API_KEY, or GEMINI_API_KEY, then reboot the app."
     if result and result.get("source") == "fallback" and result.get("error"):
         return f"LLM error: {result['error']}"
     provider = (result or {}).get("source", "LLM").title()
@@ -763,7 +777,7 @@ def render_langsmith_panel() -> None:
     tracing = get_setting("LANGSMITH_TRACING").lower() == "true"
     project = get_setting("LANGSMITH_PROJECT", "bulls-and-cows-agent")
     llm_settings = get_llm_settings()
-    llm_enabled = bool(llm_settings["api_key"])
+    llm_enabled = bool(llm_settings["configured"])
 
     st.subheader("LangSmith")
     st.caption("Each live turn is traced: LangGraph feedback, human guesses, and LLM agent messages.")
@@ -782,7 +796,7 @@ def render_gemini_chat_panel() -> None:
     with st.expander(copy["title"], expanded=False):
         st.caption(copy["description"])
         llm_settings = get_llm_settings()
-        if not llm_settings["api_key"]:
+        if not llm_settings["configured"]:
             st.info(format_llm_status_message(False))
         with st.form("coach_question_form"):
             question = st.text_area(
@@ -810,7 +824,7 @@ def render_gemini_chat_panel() -> None:
                         "question": normalized_question,
                         "answer": result["message"],
                         "source": result["source"],
-                        "status": format_llm_status_message(bool(llm_settings["api_key"]), result),
+                        "status": format_llm_status_message(bool(llm_settings["configured"]), result),
                     }
                 )
                 record_llm_agent_message(
@@ -826,7 +840,7 @@ def render_gemini_chat_panel() -> None:
 
         if st.session_state.gemini_chat_history:
             latest = st.session_state.gemini_chat_history[-1]
-            if latest.get("source") not in {"gemini", "nebius"}:
+            if latest.get("source") not in {"gemini", "nebius", "ollama"}:
                 st.warning(latest.get("status") or format_llm_status_message(False))
             st.markdown(
                 f"""

@@ -51,6 +51,23 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings["api_key"], "nebius-key")
             self.assertEqual(settings["model"], "nebius-model")
 
+    def test_llm_settings_prefer_local_ollama_when_configured(self):
+        with patch.dict(
+            os.environ,
+            {
+                "OLLAMA_MODEL": "llama3.1",
+                "NEBIUS_API_KEY": "nebius-key",
+                "GOOGLE_API_KEY": "gemini-key",
+            },
+            clear=True,
+        ):
+            settings = main.get_llm_settings()
+
+            self.assertEqual(settings["provider"], "ollama")
+            self.assertTrue(settings["configured"])
+            self.assertEqual(settings["model"], "llama3.1")
+            self.assertEqual(settings["base_url"], "http://localhost:11434")
+
     def test_apply_settings_to_environment_keeps_existing_environment_value(self):
         with patch.dict(os.environ, {"LANGSMITH_PROJECT": "from-env"}, clear=True):
             main.apply_settings_to_environment({"LANGSMITH_PROJECT": "from-secrets"})
