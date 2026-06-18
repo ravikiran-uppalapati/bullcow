@@ -1,4 +1,9 @@
+import json
+from types import SimpleNamespace
+from urllib import request
+
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
+DEFAULT_NEBIUS_BASE_URL = "https://api.studio.nebius.com/v1"
 
 
 def format_game_memory_for_prompt(game_memory: dict | None) -> str:
@@ -88,7 +93,7 @@ def build_gemini_chat_prompt(
     game_memory: dict | None = None,
 ) -> str:
     return (
-        "You are Gemini Coach inside a Bulls and Cows game.\n"
+        "You are the LLM Coach inside a Bulls and Cows game.\n"
         "Answer the human like a helpful game companion: clear, playful, and concise.\n"
         "Use the full session memory and the human's question.\n"
         "Do not reveal the app's secret number. Do not claim certainty where the "
@@ -103,6 +108,8 @@ def generate_gemini_chat_response(
     question: str,
     api_key: str | None,
     model_name: str = DEFAULT_GEMINI_MODEL,
+    provider: str = "gemini",
+    base_url: str = DEFAULT_NEBIUS_BASE_URL,
     game_memory: dict | None = None,
     llm_factory=None,
 ) -> dict:
@@ -111,17 +118,19 @@ def generate_gemini_chat_response(
         return {"source": "deterministic", "message": fallback}
 
     try:
-        llm, used_model = _create_llm_with_model(api_key, model_name, llm_factory)
+        llm, used_model = _create_llm_with_model(api_key, model_name, provider, base_url, llm_factory)
         response = llm.invoke(build_gemini_chat_prompt(question, game_memory))
         message = getattr(response, "content", str(response)).strip()
         if not message:
             raise ValueError("Gemini returned an empty chat answer.")
-        return {"source": "gemini", "message": message, "model": used_model}
+        return {"source": provider, "message": message, "model": used_model}
     except Exception as exc:
         retry_result = _retry_default_model_after_quota(
             exc,
             api_key,
             model_name,
+            provider,
+            base_url,
             lambda llm: llm.invoke(build_gemini_chat_prompt(question, game_memory)),
             llm_factory,
         )
@@ -135,6 +144,8 @@ def generate_gemini_agent_message(
     payload: dict,
     api_key: str | None,
     model_name: str = DEFAULT_GEMINI_MODEL,
+    provider: str = "gemini",
+    base_url: str = DEFAULT_NEBIUS_BASE_URL,
     llm_factory=None,
 ) -> dict:
     fallback = payload.get("fallback", "")
@@ -142,7 +153,7 @@ def generate_gemini_agent_message(
         return {"source": "deterministic", "message": fallback}
 
     try:
-        llm, used_model = _create_llm_with_model(api_key, model_name, llm_factory)
+        llm, used_model = _create_llm_with_model(api_key, model_name, provider, base_url, llm_factory)
         if role == "opponent":
             prompt = build_gemini_opponent_prompt(
                 current_guess=payload["current_guess"],
@@ -163,7 +174,7 @@ def generate_gemini_agent_message(
         message = getattr(response, "content", str(response)).strip()
         if not message:
             raise ValueError("Gemini returned an empty message.")
-        return {"source": "gemini", "message": message, "model": used_model}
+        return {"source": provider, "message": message, "model": used_model}
     except Exception as exc:
         return {"source": "fallback", "message": fallback, "error": _friendly_gemini_error(exc)}
 
@@ -172,6 +183,8 @@ def generate_gemini_coach_tip(
     notes: dict,
     api_key: str | None,
     model_name: str = DEFAULT_GEMINI_MODEL,
+    provider: str = "gemini",
+    base_url: str = DEFAULT_NEBIUS_BASE_URL,
     game_memory: dict | None = None,
     llm_factory=None,
 ) -> dict:
@@ -179,12 +192,12 @@ def generate_gemini_coach_tip(
         return {"source": "deterministic", "tip": notes.get("tip", "")}
 
     try:
-        llm, used_model = _create_llm_with_model(api_key, model_name, llm_factory)
+        llm, used_model = _create_llm_with_model(api_key, model_name, provider, base_url, llm_factory)
         response = llm.invoke(build_gemini_coach_prompt(notes, game_memory))
         tip = getattr(response, "content", str(response)).strip()
         if not tip:
             raise ValueError("Gemini returned an empty tip.")
-        return {"source": "gemini", "tip": tip, "model": used_model}
+        return {"source": provider, "tip": tip, "model": used_model}
     except Exception as exc:
         return {
             "source": "fallback",
@@ -193,25 +206,44 @@ def generate_gemini_coach_tip(
         }
 
 
-def _create_llm_with_model(api_key: str, model_name: str, llm_factory=None):
+def _create_llm_with_model(
+    api_key: str,
+    model_name: str,
+    provider: str = "gemini",
+    base_url: str = DEFAULT_NEBIUS_BASE_URL,
+    llm_factory=None,
+):
     if llm_factory:
         try:
-            return llm_factory(model_name), model_name
+            return llm_factory(provider, model_name), model_name
         except TypeError:
-            return llm_factory(), model_name
+            try:
+                return llm_factory(model_name), model_name
+            except TypeError:
+                return llm_factory(), model_name
+    if provider == "nebius":
+        return _NebiusChatLLM(api_key, model_name, base_url), model_name
     return _create_gemini_llm(api_key, model_name), model_name
 
 
-def _retry_default_model_after_quota(exc: Exception, api_key: str, model_name: str, invoke_fn, llm_factory=None):
-    if model_name == DEFAULT_GEMINI_MODEL or not _is_quota_error(exc):
+def _retry_default_model_after_quota(
+    exc: Exception,
+    api_key: str,
+    model_name: str,
+    provider: str,
+    base_url: str,
+    invoke_fn,
+    llm_factory=None,
+):
+    if provider != "gemini" or model_name == DEFAULT_GEMINI_MODEL or not _is_quota_error(exc):
         return None
     try:
-        llm, used_model = _create_llm_with_model(api_key, DEFAULT_GEMINI_MODEL, llm_factory)
+        llm, used_model = _create_llm_with_model(api_key, DEFAULT_GEMINI_MODEL, provider, base_url, llm_factory)
         response = invoke_fn(llm)
         message = getattr(response, "content", str(response)).strip()
         if not message:
             raise ValueError("Gemini returned an empty chat answer.")
-        return {"source": "gemini", "message": message, "model": used_model}
+        return {"source": provider, "message": message, "model": used_model}
     except Exception as fallback_exc:
         return {
             "source": "fallback",
@@ -240,3 +272,32 @@ def _create_gemini_llm(api_key: str, model_name: str):
         temperature=0.4,
         max_retries=1,
     )
+
+
+class _NebiusChatLLM:
+    def __init__(self, api_key: str, model_name: str, base_url: str = DEFAULT_NEBIUS_BASE_URL):
+        self.api_key = api_key
+        self.model_name = model_name
+        self.base_url = base_url.rstrip("/")
+
+    def invoke(self, prompt: str):
+        payload = json.dumps(
+            {
+                "model": self.model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.4,
+            }
+        ).encode("utf-8")
+        req = request.Request(
+            f"{self.base_url}/chat/completions",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with request.urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        content = data["choices"][0]["message"]["content"]
+        return SimpleNamespace(content=content)

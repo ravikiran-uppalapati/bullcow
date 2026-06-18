@@ -82,6 +82,9 @@ def apply_settings_to_environment(settings: dict | None = None) -> None:
         "GOOGLE_API_KEY",
         "GEMINI_API_KEY",
         "GEMINI_MODEL",
+        "NEBIUS_API_KEY",
+        "NEBIUS_BASE_URL",
+        "NEBIUS_MODEL",
     ]:
         value = secret_values.get(name)
         if value and not os.getenv(name):
@@ -102,16 +105,35 @@ def should_show_agent_toolbelt_on_main_screen() -> bool:
     return False
 
 
-def is_gemini_configured() -> bool:
-    return bool(get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY"))
+def get_llm_settings() -> dict[str, str]:
+    nebius_key = get_setting("NEBIUS_API_KEY")
+    if nebius_key:
+        return {
+            "provider": "nebius",
+            "api_key": nebius_key,
+            "model": get_setting("NEBIUS_MODEL", "meta-llama/Meta-Llama-3.1-70B-Instruct"),
+            "base_url": get_setting("NEBIUS_BASE_URL", "https://api.studio.nebius.com/v1"),
+        }
+    gemini_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
+    return {
+        "provider": "gemini",
+        "api_key": gemini_key,
+        "model": get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
+        "base_url": "",
+    }
 
 
-def format_gemini_status_message(configured: bool, result: dict | None = None) -> str:
+def is_llm_configured() -> bool:
+    return bool(get_llm_settings()["api_key"])
+
+
+def format_llm_status_message(configured: bool, result: dict | None = None) -> str:
     if not configured:
-        return "Gemini is not connected. In Streamlit secrets, add GOOGLE_API_KEY or GEMINI_API_KEY, then reboot the app."
+        return "LLM Coach is not connected. In Streamlit secrets, add NEBIUS_API_KEY, GOOGLE_API_KEY, or GEMINI_API_KEY, then reboot the app."
     if result and result.get("source") == "fallback" and result.get("error"):
-        return f"Gemini error: {result['error']}"
-    return "Gemini connected."
+        return f"LLM error: {result['error']}"
+    provider = (result or {}).get("source", "LLM").title()
+    return f"{provider} connected."
 
 
 def render_game_styles() -> None:
@@ -740,17 +762,18 @@ def render_clue_board(clue_notes: list[dict]) -> None:
 def render_langsmith_panel() -> None:
     tracing = get_setting("LANGSMITH_TRACING").lower() == "true"
     project = get_setting("LANGSMITH_PROJECT", "bulls-and-cows-agent")
-    gemini_enabled = bool(get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY"))
+    llm_settings = get_llm_settings()
+    llm_enabled = bool(llm_settings["api_key"])
 
     st.subheader("LangSmith")
-    st.caption("Each live turn is traced: LangGraph feedback, human guesses, and Gemini agent messages.")
+    st.caption("Each live turn is traced: LangGraph feedback, human guesses, and LLM agent messages.")
     st.metric("Tracing", "Enabled" if tracing else "Not enabled")
     st.metric("Project", project)
-    st.metric("Gemini Coach", "Enabled" if gemini_enabled else "No API key")
+    st.metric("LLM Coach", f"{llm_settings['provider'].title()} enabled" if llm_enabled else "No API key")
     st.markdown(
         "- Agent feedback calls run through LangGraph and trace nodes like `receive_feedback`, `filter_candidates`, and `choose_next_guess`.\n"
         "- Human guesses are logged as `human_guess_turn` with bulls/cows results.\n"
-        "- Gemini messages are logged as `llm_agent_message` with role, source, and game context."
+        "- LLM messages are logged as `llm_agent_message` with role, source, and game context."
     )
 
 
@@ -758,9 +781,9 @@ def render_gemini_chat_panel() -> None:
     copy = get_gemini_chat_copy()
     with st.expander(copy["title"], expanded=False):
         st.caption(copy["description"])
-        gemini_configured = is_gemini_configured()
-        if not gemini_configured:
-            st.info(format_gemini_status_message(False))
+        llm_settings = get_llm_settings()
+        if not llm_settings["api_key"]:
+            st.info(format_llm_status_message(False))
         with st.form("coach_question_form"):
             question = st.text_area(
                 copy["question_label"],
@@ -774,11 +797,12 @@ def render_gemini_chat_panel() -> None:
             if not normalized_question:
                 st.warning("Type a question for Coach first.")
             else:
-                api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
                 result = generate_gemini_chat_response(
                     question=normalized_question,
-                    api_key=api_key,
-                    model_name=get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
+                    api_key=llm_settings["api_key"],
+                    model_name=llm_settings["model"],
+                    provider=llm_settings["provider"],
+                    base_url=llm_settings["base_url"],
                     game_memory=build_current_game_memory(),
                 )
                 st.session_state.gemini_chat_history.append(
@@ -786,7 +810,7 @@ def render_gemini_chat_panel() -> None:
                         "question": normalized_question,
                         "answer": result["message"],
                         "source": result["source"],
-                        "status": format_gemini_status_message(bool(api_key), result),
+                        "status": format_llm_status_message(bool(llm_settings["api_key"]), result),
                     }
                 )
                 record_llm_agent_message(
@@ -802,8 +826,8 @@ def render_gemini_chat_panel() -> None:
 
         if st.session_state.gemini_chat_history:
             latest = st.session_state.gemini_chat_history[-1]
-            if latest.get("source") != "gemini":
-                st.warning(latest.get("status") or format_gemini_status_message(False))
+            if latest.get("source") not in {"gemini", "nebius"}:
+                st.warning(latest.get("status") or format_llm_status_message(False))
             st.markdown(
                 f"""
                 <div class="coach-panel llm-tip">
@@ -829,7 +853,7 @@ def render_agent_toolbelt_panel() -> None:
         game_memory,
         st.session_state.gemini_chat_history,
         get_setting("LANGSMITH_TRACING").lower() == "true",
-        bool(get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")),
+        is_llm_configured(),
     )
     tool_cards = "".join(
         f"""
@@ -1012,15 +1036,14 @@ def render_agent_turn() -> None:
 
 
 def get_or_create_opponent_message(state: dict) -> dict:
-    api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
+    llm_settings = get_llm_settings()
     guess = state.get("current_guess")
-    model_name = get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
     notes = build_coach_notes(st.session_state.player_history)
     game_memory = build_current_game_memory(notes)
     message_key = (
         f"{state.get('turn')}:{guess}:{len(state.get('candidates', []))}:"
         f"{len(game_memory['human']['history'])}:{len(game_memory['agent']['history'])}:"
-        f"{game_memory['phase']}:{model_name}"
+        f"{game_memory['phase']}:{llm_settings['provider']}:{llm_settings['model']}"
     )
 
     if st.session_state.get("llm_opponent_key") == message_key:
@@ -1037,8 +1060,10 @@ def get_or_create_opponent_message(state: dict) -> dict:
             "game_memory": game_memory,
             "fallback": fallback,
         },
-        api_key=api_key,
-        model_name=model_name,
+        api_key=llm_settings["api_key"],
+        model_name=llm_settings["model"],
+        provider=llm_settings["provider"],
+        base_url=llm_settings["base_url"],
     )
     st.session_state.llm_opponent_message = result
     st.session_state.llm_opponent_key = message_key

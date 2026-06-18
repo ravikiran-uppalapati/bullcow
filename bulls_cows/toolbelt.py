@@ -55,7 +55,7 @@ def build_agent_toolbelt(
         },
         {
             "name": "gemini_chat",
-            "label": "Gemini Coach",
+            "label": "LLM Coach",
             "owner": "Coach Agent",
             "status": "used" if chat_history else ("ready" if gemini_enabled else "needs key"),
             "evidence": _chat_evidence(chat_history),
@@ -65,7 +65,7 @@ def build_agent_toolbelt(
             "label": "LLM Reasoning",
             "owner": "Opponent + Coach",
             "status": "ready" if gemini_enabled else "fallback",
-            "evidence": "Gemini enabled" if gemini_enabled else "Using deterministic fallback",
+            "evidence": "LLM enabled" if gemini_enabled else "Using deterministic fallback",
         },
         {
             "name": "langsmith_trace",

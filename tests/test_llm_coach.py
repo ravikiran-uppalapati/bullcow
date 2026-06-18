@@ -278,6 +278,36 @@ class LlmCoachTests(unittest.TestCase):
         self.assertEqual(result["source"], "fallback")
         self.assertIn("Gemini quota is exhausted", result["error"])
 
+    def test_generate_chat_response_uses_nebius_provider(self):
+        class FakeMessage:
+            content = "Nebius coach is online."
+
+        class FakeLlm:
+            def __init__(self, provider, model_name):
+                self.provider = provider
+                self.model_name = model_name
+
+            def invoke(self, prompt):
+                return FakeMessage()
+
+        calls = []
+
+        def fake_factory(provider, model_name):
+            calls.append((provider, model_name))
+            return FakeLlm(provider, model_name)
+
+        result = generate_gemini_chat_response(
+            question="Can you coach me?",
+            api_key="nebius-key",
+            model_name="meta-llama/Meta-Llama-3.1-70B-Instruct",
+            provider="nebius",
+            llm_factory=fake_factory,
+        )
+
+        self.assertEqual(result["source"], "nebius")
+        self.assertEqual(result["message"], "Nebius coach is online.")
+        self.assertEqual(calls, [("nebius", "meta-llama/Meta-Llama-3.1-70B-Instruct")])
+
 
 if __name__ == "__main__":
     unittest.main()
