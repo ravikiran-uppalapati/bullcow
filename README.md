@@ -2,8 +2,8 @@
 
 This Streamlit demo shows an Agent vs Human Bulls and Cows game. The opponent
 agent uses LangGraph to guess the human's secret number, while a Coach Agent
-keeps notes for the human player. Gemini can optionally generate a human-like
-coach hint from the clue notebook.
+keeps notes for the human player. Gemini can power both the opponent's playful
+game talk and the coach's reasoning note from the clue notebook.
 
 ## Run
 
@@ -17,9 +17,9 @@ $env:GOOGLE_API_KEY="<your-gemini-key>"
 streamlit run main.py
 ```
 
-`GOOGLE_API_KEY` enables the optional Gemini Coach button. You can also use
-`GEMINI_API_KEY`. If no Gemini key is set, the deterministic Coach Agent still
-works.
+`GOOGLE_API_KEY` enables the live Gemini Opponent and Coach agents. You can
+also use `GEMINI_API_KEY`. If no Gemini key is set, deterministic fallback
+messages and Coach Agent notes still work.
 
 For Streamlit Community Cloud, add these values in the app's secrets/settings
 instead of typing them into the app:
@@ -45,8 +45,10 @@ $env:GEMINI_MODEL="gemini-2.0-flash"
 3. Give bulls/cows feedback for the opponent agent's guess.
 4. Make your own guess against the opponent's secret number.
 5. Use **Coach Agent Notes** and **Coach notebook** to track clues.
-6. Click **Ask Gemini Coach** when `GOOGLE_API_KEY` or `GEMINI_API_KEY` is set.
-7. Open LangSmith and show the node-by-node trace for LangGraph and Gemini calls.
+6. With `GOOGLE_API_KEY` or `GEMINI_API_KEY` set, show the live Opponent and
+   Coach Agent messages.
+7. Open LangSmith and show `agent_feedback_turn`, LangGraph nodes,
+   `human_guess_turn`, and `llm_agent_message` traces.
 
 Rules: digits are unique, the first digit cannot be `0`, a bull is a correct
 digit in the correct position, and a cow is a correct digit in the wrong

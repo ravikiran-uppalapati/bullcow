@@ -4,7 +4,7 @@ from html import escape
 
 import streamlit as st
 
-from bulls_cows.agent_graph import apply_feedback_turn, create_initial_agent_state
+from bulls_cows.agent_graph import create_initial_agent_state
 from bulls_cows.coach import build_coach_notes
 from bulls_cows.game import (
     CandidateFeedback,
@@ -13,11 +13,20 @@ from bulls_cows.game import (
     is_valid_secret,
     score_guess,
 )
-from bulls_cows.llm_coach import DEFAULT_GEMINI_MODEL, generate_gemini_coach_tip
+from bulls_cows.llm_coach import (
+    DEFAULT_GEMINI_MODEL,
+    generate_gemini_agent_message,
+    generate_gemini_coach_tip,
+)
 from bulls_cows.session_flow import (
     next_phase_after_agent_feedback,
     next_phase_after_human_guess,
     start_game_phase,
+)
+from bulls_cows.telemetry import (
+    record_human_guess_turn,
+    record_llm_agent_message,
+    run_traced_agent_feedback_turn,
 )
 
 
@@ -28,6 +37,10 @@ def reset_game() -> None:
     st.session_state.game_phase = "intro"
     st.session_state.human_feedback = None
     st.session_state.gemini_coach_tip = None
+    st.session_state.llm_opponent_message = None
+    st.session_state.llm_opponent_key = None
+    st.session_state.llm_coach_reasoning = None
+    st.session_state.llm_coach_key = None
 
 
 def ensure_session() -> None:
@@ -35,6 +48,14 @@ def ensure_session() -> None:
         reset_game()
     if "gemini_coach_tip" not in st.session_state:
         st.session_state.gemini_coach_tip = None
+    if "llm_opponent_message" not in st.session_state:
+        st.session_state.llm_opponent_message = None
+    if "llm_opponent_key" not in st.session_state:
+        st.session_state.llm_opponent_key = None
+    if "llm_coach_reasoning" not in st.session_state:
+        st.session_state.llm_coach_reasoning = None
+    if "llm_coach_key" not in st.session_state:
+        st.session_state.llm_coach_key = None
 
 
 def get_setting(name: str, default: str = "") -> str:
@@ -46,6 +67,29 @@ def get_setting(name: str, default: str = "") -> str:
     except Exception:
         secret_value = default
     return str(secret_value) if secret_value is not None else default
+
+
+def get_streamlit_secrets() -> dict:
+    try:
+        return dict(st.secrets)
+    except Exception:
+        return {}
+
+
+def apply_settings_to_environment(settings: dict | None = None) -> None:
+    secret_values = settings if settings is not None else get_streamlit_secrets()
+    for name in [
+        "LANGSMITH_TRACING",
+        "LANGSMITH_API_KEY",
+        "LANGSMITH_PROJECT",
+        "LANGSMITH_ENDPOINT",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+        "GEMINI_MODEL",
+    ]:
+        value = secret_values.get(name)
+        if value and not os.getenv(name):
+            os.environ[name] = str(value)
 
 
 def render_game_styles() -> None:
@@ -645,8 +689,10 @@ def render_rules_expander() -> None:
 
 def render_coach_panel() -> None:
     notes = build_coach_notes(st.session_state.player_history)
+    maybe_generate_llm_coach_reasoning(notes)
     used_digits = ", ".join(notes["used_digits"]) if notes["used_digits"] else "None yet"
     gemini_tip = st.session_state.get("gemini_coach_tip")
+    coach_reasoning = st.session_state.get("llm_coach_reasoning")
 
     st.markdown(
         f"""
@@ -683,9 +729,52 @@ def render_coach_panel() -> None:
             """,
             unsafe_allow_html=True,
         )
+    if coach_reasoning:
+        source = coach_reasoning["source"].title()
+        safe_message = escape(coach_reasoning["message"])
+        st.markdown(
+            f"""
+            <div class="coach-panel llm-tip">
+                <p class="coach-title">Live Coach Agent</p>
+                <p><strong>{source} reasoning:</strong> {safe_message}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     render_gemini_coach_button(notes)
     with st.expander("Coach notebook", expanded=bool(notes["clue_notes"])):
         render_clue_board(notes["clue_notes"])
+
+
+def maybe_generate_llm_coach_reasoning(notes: dict) -> None:
+    api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
+    if not api_key:
+        return
+
+    model_name = get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    coach_key = f"{notes['attempts']}:{notes['suggested_guess']}:{model_name}"
+    if st.session_state.get("llm_coach_key") == coach_key:
+        return
+
+    fallback = f"Try {notes['suggested_guess']}. {notes['tip']}"
+    result = generate_gemini_agent_message(
+        "coach",
+        {"notes": notes, "fallback": fallback},
+        api_key=api_key,
+        model_name=model_name,
+    )
+    st.session_state.llm_coach_reasoning = result
+    st.session_state.llm_coach_key = coach_key
+    record_llm_agent_message(
+        "coach",
+        result["source"],
+        result["message"],
+        {
+            "attempts": notes["attempts"],
+            "suggested_guess": notes["suggested_guess"],
+            "previous_guesses": notes["previous_guesses"],
+        },
+    )
 
 
 def render_gemini_coach_button(notes: dict) -> None:
@@ -734,14 +823,14 @@ def render_langsmith_panel() -> None:
     gemini_enabled = bool(get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY"))
 
     st.subheader("LangSmith")
-    st.caption("Each agent guess turn is a LangGraph run you can inspect.")
+    st.caption("Each live turn is traced: LangGraph feedback, human guesses, and Gemini agent messages.")
     st.metric("Tracing", "Enabled" if tracing else "Not enabled")
     st.metric("Project", project)
     st.metric("Gemini Coach", "Enabled" if gemini_enabled else "No API key")
     st.markdown(
-        "- Watch `receive_feedback`, `filter_candidates`, and `choose_next_guess`.\n"
-        "- Compare candidates before and after feedback.\n"
-        "- Use the trace to explain why the next guess changed."
+        "- Agent feedback calls run through LangGraph and trace nodes like `receive_feedback`, `filter_candidates`, and `choose_next_guess`.\n"
+        "- Human guesses are logged as `human_guess_turn` with bulls/cows results.\n"
+        "- Gemini messages are logged as `llm_agent_message` with role, source, and game context."
     )
 
 
@@ -787,9 +876,14 @@ def render_agent_feedback_dialog() -> None:
     )
 
     if submitted and feedback_is_valid:
-        updated = apply_feedback_turn(state, CandidateFeedback(int(bulls), int(cows)))
+        updated = run_traced_agent_feedback_turn(
+            state,
+            CandidateFeedback(int(bulls), int(cows)),
+        )
         st.session_state.agent_state = updated
         st.session_state.gemini_coach_tip = None
+        st.session_state.llm_opponent_message = None
+        st.session_state.llm_opponent_key = None
         st.session_state.game_phase = next_phase_after_agent_feedback(updated["status"])
         st.rerun()
     elif submitted:
@@ -849,6 +943,7 @@ def render_intro_screen() -> None:
 
 def render_agent_turn() -> None:
     state = st.session_state.agent_state
+    opponent_message = get_or_create_opponent_message(state)
 
     st.markdown('<div class="game-shell">', unsafe_allow_html=True)
     render_game_logo()
@@ -863,10 +958,12 @@ def render_agent_turn() -> None:
     )
     render_rules_expander()
     render_coach_panel()
+    safe_opponent_message = escape(opponent_message["message"])
+    opponent_source = opponent_message["source"].title()
     st.markdown(
-        """
+        f"""
         <div class="speech speech-agent">
-            Check this guess against your secret number.
+            <strong>{opponent_source} Opponent:</strong> {safe_opponent_message}
         </div>
         """,
         unsafe_allow_html=True,
@@ -892,6 +989,44 @@ def render_agent_turn() -> None:
         st.write(state["reasoning"])
         render_history("Agent turns so far", state["history"])
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+def get_or_create_opponent_message(state: dict) -> dict:
+    api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
+    guess = state.get("current_guess")
+    model_name = get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    message_key = f"{state.get('turn')}:{guess}:{len(state.get('candidates', []))}:{model_name}"
+
+    if st.session_state.get("llm_opponent_key") == message_key:
+        return st.session_state.llm_opponent_message
+
+    fallback = f"I am trying {guess}. Your secret has fewer places to hide now."
+    result = generate_gemini_agent_message(
+        "opponent",
+        {
+            "current_guess": guess,
+            "turn": state.get("turn", 1),
+            "candidate_count": len(state.get("candidates", [])),
+            "reasoning": state.get("reasoning", ""),
+            "fallback": fallback,
+        },
+        api_key=api_key,
+        model_name=model_name,
+    )
+    st.session_state.llm_opponent_message = result
+    st.session_state.llm_opponent_key = message_key
+    record_llm_agent_message(
+        "opponent",
+        result["source"],
+        result["message"],
+        {
+            "turn": state.get("turn", 1),
+            "guess": guess,
+            "candidate_count": len(state.get("candidates", [])),
+            "reasoning": state.get("reasoning", ""),
+        },
+    )
+    return result
 
 
 def render_human_turn() -> None:
@@ -943,7 +1078,16 @@ def render_human_turn() -> None:
                 "cows": feedback.cows,
                 "won": won,
             }
+            record_human_guess_turn(
+                normalized,
+                feedback.bulls,
+                feedback.cows,
+                won,
+                len(st.session_state.player_history),
+            )
             st.session_state.gemini_coach_tip = None
+            st.session_state.llm_coach_reasoning = None
+            st.session_state.llm_coach_key = None
             st.session_state.game_phase = "human_result"
             st.rerun()
 
@@ -981,6 +1125,7 @@ def render_game_screen() -> None:
 
 def main() -> None:
     st.set_page_config(page_title="Bulls and Cows Agent", page_icon="BC", layout="wide")
+    apply_settings_to_environment()
     ensure_session()
     render_game_styles()
 
