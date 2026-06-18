@@ -3,7 +3,9 @@
 This Streamlit demo shows an Agent vs Human Bulls and Cows game. The opponent
 agent uses LangGraph to guess the human's secret number, while a Coach Agent
 keeps notes for the human player. Gemini can power both the opponent's playful
-game talk and the coach's reasoning note from the clue notebook.
+game talk and the coach's reasoning note using the full per-session game
+memory: agent guesses, human guesses, feedback, candidate counts, and the
+merged turn timeline.
 
 ## Run
 
@@ -46,7 +48,7 @@ $env:GEMINI_MODEL="gemini-2.0-flash"
 4. Make your own guess against the opponent's secret number.
 5. Use **Coach Agent Notes** and **Coach notebook** to track clues.
 6. With `GOOGLE_API_KEY` or `GEMINI_API_KEY` set, show the live Opponent and
-   Coach Agent messages.
+   Coach Agent messages reacting to the full game history.
 7. Open LangSmith and show `agent_feedback_turn`, LangGraph nodes,
    `human_guess_turn`, and `llm_agent_message` traces.
 

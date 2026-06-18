@@ -1,7 +1,31 @@
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
 
 
-def build_gemini_coach_prompt(notes: dict) -> str:
+def format_game_memory_for_prompt(game_memory: dict | None) -> str:
+    if not game_memory:
+        return "Full session memory: not available."
+
+    agent = game_memory.get("agent", {})
+    human = game_memory.get("human", {})
+    coach = game_memory.get("coach", {})
+    timeline = game_memory.get("timeline", [])
+    timeline_text = "\n".join(f"- {item}" for item in timeline) if timeline else "- No turns yet."
+
+    return (
+        "Full session memory:\n"
+        f"Current phase: {game_memory.get('phase', 'unknown')}\n"
+        f"Agent current guess: {agent.get('current_guess')}\n"
+        f"Agent remaining candidate count: {agent.get('candidate_count')}\n"
+        f"Agent latest reasoning: {agent.get('reasoning', '')}\n"
+        f"Human next turn number: {human.get('turn')}\n"
+        f"Suggested human guess: {coach.get('suggested_guess')}\n"
+        f"Coach deterministic tip: {coach.get('tip')}\n"
+        "Timeline:\n"
+        f"{timeline_text}"
+    )
+
+
+def build_gemini_coach_prompt(notes: dict, game_memory: dict | None = None) -> str:
     clue_lines = [
         f"- Turn {item['turn']}: {item['guess']} -> {item['response']}"
         for item in notes.get("clue_notes", [])
@@ -15,7 +39,8 @@ def build_gemini_coach_prompt(notes: dict) -> str:
         "Give the human player one concise, friendly hint.\n"
         "Rules: bull = right digit/right place. cow = right digit/wrong place.\n"
         "Do not claim to know the secret number. Do not reveal a secret.\n"
-        "Use only the clue history and the suggested guess.\n\n"
+        "Use only the session memory, clue history, and suggested guess.\n\n"
+        f"{format_game_memory_for_prompt(game_memory)}\n\n"
         f"Current deterministic tip: {baseline_tip}\n"
         f"Suggested next guess: {suggested_guess}\n"
         "Human clue history:\n"
@@ -29,6 +54,7 @@ def build_gemini_opponent_prompt(
     turn: int,
     candidate_count: int,
     reasoning: str,
+    game_memory: dict | None = None,
 ) -> str:
     return (
         "You are the Opponent Agent in a Bulls and Cows game.\n"
@@ -43,12 +69,13 @@ def build_gemini_opponent_prompt(
         f"Chosen guess: {current_guess}\n"
         f"Remaining possible human secrets before feedback: {candidate_count}\n"
         f"Solver reasoning: {reasoning}\n\n"
+        f"{format_game_memory_for_prompt(game_memory)}\n\n"
         "Return one short line, maximum two sentences."
     )
 
 
-def build_gemini_coach_reasoning_prompt(notes: dict) -> str:
-    base_prompt = build_gemini_coach_prompt(notes)
+def build_gemini_coach_reasoning_prompt(notes: dict, game_memory: dict | None = None) -> str:
+    base_prompt = build_gemini_coach_prompt(notes, game_memory)
     return (
         f"{base_prompt}\n\n"
         "Also explain why the suggested number is useful in simple terms. "
@@ -75,9 +102,13 @@ def generate_gemini_agent_message(
                 turn=int(payload["turn"]),
                 candidate_count=int(payload["candidate_count"]),
                 reasoning=payload.get("reasoning", ""),
+                game_memory=payload.get("game_memory"),
             )
         elif role == "coach":
-            prompt = build_gemini_coach_reasoning_prompt(payload["notes"])
+            prompt = build_gemini_coach_reasoning_prompt(
+                payload["notes"],
+                payload.get("game_memory"),
+            )
         else:
             raise ValueError(f"Unknown LLM agent role: {role}")
 
@@ -94,6 +125,7 @@ def generate_gemini_coach_tip(
     notes: dict,
     api_key: str | None,
     model_name: str = DEFAULT_GEMINI_MODEL,
+    game_memory: dict | None = None,
     llm_factory=None,
 ) -> dict:
     if not api_key:
@@ -101,7 +133,7 @@ def generate_gemini_coach_tip(
 
     try:
         llm = llm_factory() if llm_factory else _create_gemini_llm(api_key, model_name)
-        response = llm.invoke(build_gemini_coach_prompt(notes))
+        response = llm.invoke(build_gemini_coach_prompt(notes, game_memory))
         tip = getattr(response, "content", str(response)).strip()
         if not tip:
             raise ValueError("Gemini returned an empty tip.")

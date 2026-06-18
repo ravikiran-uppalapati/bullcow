@@ -18,6 +18,7 @@ from bulls_cows.llm_coach import (
     generate_gemini_agent_message,
     generate_gemini_coach_tip,
 )
+from bulls_cows.memory import build_game_memory
 from bulls_cows.session_flow import (
     next_phase_after_agent_feedback,
     next_phase_after_human_guess,
@@ -689,7 +690,8 @@ def render_rules_expander() -> None:
 
 def render_coach_panel() -> None:
     notes = build_coach_notes(st.session_state.player_history)
-    maybe_generate_llm_coach_reasoning(notes)
+    game_memory = build_current_game_memory(notes)
+    maybe_generate_llm_coach_reasoning(notes, game_memory)
     used_digits = ", ".join(notes["used_digits"]) if notes["used_digits"] else "None yet"
     gemini_tip = st.session_state.get("gemini_coach_tip")
     coach_reasoning = st.session_state.get("llm_coach_reasoning")
@@ -746,20 +748,35 @@ def render_coach_panel() -> None:
         render_clue_board(notes["clue_notes"])
 
 
-def maybe_generate_llm_coach_reasoning(notes: dict) -> None:
+def build_current_game_memory(notes: dict | None = None) -> dict:
+    coach_notes = notes if notes is not None else build_coach_notes(st.session_state.player_history)
+    return build_game_memory(
+        st.session_state.agent_state,
+        st.session_state.player_history,
+        coach_notes,
+        st.session_state.game_phase,
+    )
+
+
+def maybe_generate_llm_coach_reasoning(notes: dict, game_memory: dict) -> None:
     api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
     if not api_key:
         return
 
     model_name = get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
-    coach_key = f"{notes['attempts']}:{notes['suggested_guess']}:{model_name}"
+    agent_history_count = len(game_memory["agent"]["history"])
+    human_history_count = len(game_memory["human"]["history"])
+    coach_key = (
+        f"{notes['attempts']}:{notes['suggested_guess']}:{agent_history_count}:"
+        f"{human_history_count}:{game_memory['phase']}:{model_name}"
+    )
     if st.session_state.get("llm_coach_key") == coach_key:
         return
 
     fallback = f"Try {notes['suggested_guess']}. {notes['tip']}"
     result = generate_gemini_agent_message(
         "coach",
-        {"notes": notes, "fallback": fallback},
+        {"notes": notes, "game_memory": game_memory, "fallback": fallback},
         api_key=api_key,
         model_name=model_name,
     )
@@ -773,6 +790,7 @@ def maybe_generate_llm_coach_reasoning(notes: dict) -> None:
             "attempts": notes["attempts"],
             "suggested_guess": notes["suggested_guess"],
             "previous_guesses": notes["previous_guesses"],
+            "game_memory": game_memory,
         },
     )
 
@@ -791,6 +809,7 @@ def render_gemini_coach_button(notes: dict) -> None:
                 notes,
                 api_key=api_key,
                 model_name=model_name,
+                game_memory=build_current_game_memory(notes),
             )
         st.rerun()
 
@@ -995,7 +1014,13 @@ def get_or_create_opponent_message(state: dict) -> dict:
     api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
     guess = state.get("current_guess")
     model_name = get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
-    message_key = f"{state.get('turn')}:{guess}:{len(state.get('candidates', []))}:{model_name}"
+    notes = build_coach_notes(st.session_state.player_history)
+    game_memory = build_current_game_memory(notes)
+    message_key = (
+        f"{state.get('turn')}:{guess}:{len(state.get('candidates', []))}:"
+        f"{len(game_memory['human']['history'])}:{len(game_memory['agent']['history'])}:"
+        f"{game_memory['phase']}:{model_name}"
+    )
 
     if st.session_state.get("llm_opponent_key") == message_key:
         return st.session_state.llm_opponent_message
@@ -1008,6 +1033,7 @@ def get_or_create_opponent_message(state: dict) -> dict:
             "turn": state.get("turn", 1),
             "candidate_count": len(state.get("candidates", [])),
             "reasoning": state.get("reasoning", ""),
+            "game_memory": game_memory,
             "fallback": fallback,
         },
         api_key=api_key,
@@ -1024,6 +1050,7 @@ def get_or_create_opponent_message(state: dict) -> dict:
             "guess": guess,
             "candidate_count": len(state.get("candidates", [])),
             "reasoning": state.get("reasoning", ""),
+            "game_memory": game_memory,
         },
     )
     return result
