@@ -111,14 +111,23 @@ def generate_gemini_chat_response(
         return {"source": "deterministic", "message": fallback}
 
     try:
-        llm = llm_factory() if llm_factory else _create_gemini_llm(api_key, model_name)
+        llm, used_model = _create_llm_with_model(api_key, model_name, llm_factory)
         response = llm.invoke(build_gemini_chat_prompt(question, game_memory))
         message = getattr(response, "content", str(response)).strip()
         if not message:
             raise ValueError("Gemini returned an empty chat answer.")
-        return {"source": "gemini", "message": message}
+        return {"source": "gemini", "message": message, "model": used_model}
     except Exception as exc:
-        return {"source": "fallback", "message": fallback, "error": str(exc)}
+        retry_result = _retry_default_model_after_quota(
+            exc,
+            api_key,
+            model_name,
+            lambda llm: llm.invoke(build_gemini_chat_prompt(question, game_memory)),
+            llm_factory,
+        )
+        if retry_result:
+            return retry_result
+        return {"source": "fallback", "message": fallback, "error": _friendly_gemini_error(exc)}
 
 
 def generate_gemini_agent_message(
@@ -133,7 +142,7 @@ def generate_gemini_agent_message(
         return {"source": "deterministic", "message": fallback}
 
     try:
-        llm = llm_factory() if llm_factory else _create_gemini_llm(api_key, model_name)
+        llm, used_model = _create_llm_with_model(api_key, model_name, llm_factory)
         if role == "opponent":
             prompt = build_gemini_opponent_prompt(
                 current_guess=payload["current_guess"],
@@ -154,9 +163,9 @@ def generate_gemini_agent_message(
         message = getattr(response, "content", str(response)).strip()
         if not message:
             raise ValueError("Gemini returned an empty message.")
-        return {"source": "gemini", "message": message}
+        return {"source": "gemini", "message": message, "model": used_model}
     except Exception as exc:
-        return {"source": "fallback", "message": fallback, "error": str(exc)}
+        return {"source": "fallback", "message": fallback, "error": _friendly_gemini_error(exc)}
 
 
 def generate_gemini_coach_tip(
@@ -170,18 +179,56 @@ def generate_gemini_coach_tip(
         return {"source": "deterministic", "tip": notes.get("tip", "")}
 
     try:
-        llm = llm_factory() if llm_factory else _create_gemini_llm(api_key, model_name)
+        llm, used_model = _create_llm_with_model(api_key, model_name, llm_factory)
         response = llm.invoke(build_gemini_coach_prompt(notes, game_memory))
         tip = getattr(response, "content", str(response)).strip()
         if not tip:
             raise ValueError("Gemini returned an empty tip.")
-        return {"source": "gemini", "tip": tip}
+        return {"source": "gemini", "tip": tip, "model": used_model}
     except Exception as exc:
         return {
             "source": "fallback",
             "tip": notes.get("tip", ""),
-            "error": str(exc),
+            "error": _friendly_gemini_error(exc),
         }
+
+
+def _create_llm_with_model(api_key: str, model_name: str, llm_factory=None):
+    if llm_factory:
+        try:
+            return llm_factory(model_name), model_name
+        except TypeError:
+            return llm_factory(), model_name
+    return _create_gemini_llm(api_key, model_name), model_name
+
+
+def _retry_default_model_after_quota(exc: Exception, api_key: str, model_name: str, invoke_fn, llm_factory=None):
+    if model_name == DEFAULT_GEMINI_MODEL or not _is_quota_error(exc):
+        return None
+    try:
+        llm, used_model = _create_llm_with_model(api_key, DEFAULT_GEMINI_MODEL, llm_factory)
+        response = invoke_fn(llm)
+        message = getattr(response, "content", str(response)).strip()
+        if not message:
+            raise ValueError("Gemini returned an empty chat answer.")
+        return {"source": "gemini", "message": message, "model": used_model}
+    except Exception as fallback_exc:
+        return {
+            "source": "fallback",
+            "message": "I can help with the game state, but Gemini quota is exhausted right now.",
+            "error": _friendly_gemini_error(fallback_exc),
+        }
+
+
+def _is_quota_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "429" in text or "resource_exhausted" in text or "quota" in text
+
+
+def _friendly_gemini_error(exc: Exception) -> str:
+    if _is_quota_error(exc):
+        return "Gemini quota is exhausted for the selected model. Try again shortly, remove GEMINI_MODEL to use the default, or use a key with more quota."
+    return str(exc)
 
 
 def _create_gemini_llm(api_key: str, model_name: str):

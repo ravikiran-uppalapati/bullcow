@@ -234,6 +234,50 @@ class LlmCoachTests(unittest.TestCase):
         self.assertIn("Give 1 bull", result["message"])
         self.assertIn("What should I do?", fake_llm.prompt)
 
+    def test_generate_chat_response_falls_back_to_default_model_after_quota_error(self):
+        class FakeMessage:
+            content = "Default model is answering now."
+
+        class FakeLlm:
+            def __init__(self, model_name):
+                self.model_name = model_name
+
+            def invoke(self, prompt):
+                if self.model_name == "gemini-2.5-flash":
+                    raise RuntimeError("429 RESOURCE_EXHAUSTED quota exceeded")
+                return FakeMessage()
+
+        used_models = []
+
+        def fake_factory(model_name):
+            used_models.append(model_name)
+            return FakeLlm(model_name)
+
+        result = generate_gemini_chat_response(
+            question="Are you there?",
+            api_key="test-key",
+            model_name="gemini-2.5-flash",
+            llm_factory=fake_factory,
+        )
+
+        self.assertEqual(result["source"], "gemini")
+        self.assertEqual(result["model"], "gemini-2.0-flash")
+        self.assertEqual(used_models, ["gemini-2.5-flash", "gemini-2.0-flash"])
+
+    def test_generate_chat_response_shortens_quota_error(self):
+        class FakeLlm:
+            def invoke(self, prompt):
+                raise RuntimeError("429 RESOURCE_EXHAUSTED quota exceeded; retry later")
+
+        result = generate_gemini_chat_response(
+            question="Are you there?",
+            api_key="test-key",
+            llm_factory=lambda model_name: FakeLlm(),
+        )
+
+        self.assertEqual(result["source"], "fallback")
+        self.assertIn("Gemini quota is exhausted", result["error"])
+
 
 if __name__ == "__main__":
     unittest.main()
