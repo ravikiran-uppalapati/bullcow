@@ -14,6 +14,9 @@ available to the agents, such as candidate generation, bulls/cows scoring,
 candidate filtering, next-guess selection, coach memory, LLM chat, LLM
 reasoning, and LangSmith tracing.
 
+For a presentation-friendly architecture diagram, see
+[`documents/architecture.md`](documents/architecture.md).
+
 ## Run
 
 ```powershell
