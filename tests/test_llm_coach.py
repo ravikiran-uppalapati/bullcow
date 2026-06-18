@@ -3,9 +3,11 @@ import unittest
 from bulls_cows.llm_coach import (
     build_gemini_coach_prompt,
     build_gemini_opponent_prompt,
+    build_gemini_referee_prompt,
     format_game_memory_for_prompt,
     generate_gemini_agent_message,
     generate_gemini_coach_tip,
+    generate_gemini_referee_help,
 )
 
 
@@ -191,6 +193,46 @@ class LlmCoachTests(unittest.TestCase):
 
         self.assertIn("Full session memory", prompt)
         self.assertIn("Human turn 1 guessed 427", prompt)
+
+    def test_referee_prompt_includes_secret_guess_and_exact_feedback(self):
+        prompt = build_gemini_referee_prompt(
+            secret="427",
+            agent_guess="472",
+            bulls=1,
+            cows=2,
+            question="How should I respond?",
+        )
+
+        self.assertIn("427", prompt)
+        self.assertIn("472", prompt)
+        self.assertIn("1 bull", prompt)
+        self.assertIn("2 cows", prompt)
+        self.assertIn("How should I respond?", prompt)
+
+    def test_generate_referee_help_uses_injected_llm(self):
+        class FakeMessage:
+            content = "Reply with 1 bull and 2 cows."
+
+        class FakeLlm:
+            def invoke(self, prompt):
+                self.prompt = prompt
+                return FakeMessage()
+
+        fake_llm = FakeLlm()
+
+        result = generate_gemini_referee_help(
+            secret="427",
+            agent_guess="472",
+            bulls=1,
+            cows=2,
+            question="How should I respond?",
+            api_key="test-key",
+            llm_factory=lambda: fake_llm,
+        )
+
+        self.assertEqual(result["source"], "gemini")
+        self.assertEqual(result["message"], "Reply with 1 bull and 2 cows.")
+        self.assertIn("427", fake_llm.prompt)
 
 
 if __name__ == "__main__":

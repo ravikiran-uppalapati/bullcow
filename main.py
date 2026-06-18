@@ -17,6 +17,7 @@ from bulls_cows.llm_coach import (
     DEFAULT_GEMINI_MODEL,
     generate_gemini_agent_message,
     generate_gemini_coach_tip,
+    generate_gemini_referee_help,
 )
 from bulls_cows.memory import build_game_memory
 from bulls_cows.session_flow import (
@@ -42,6 +43,7 @@ def reset_game() -> None:
     st.session_state.llm_opponent_key = None
     st.session_state.llm_coach_reasoning = None
     st.session_state.llm_coach_key = None
+    st.session_state.referee_help = None
 
 
 def ensure_session() -> None:
@@ -57,6 +59,8 @@ def ensure_session() -> None:
         st.session_state.llm_coach_reasoning = None
     if "llm_coach_key" not in st.session_state:
         st.session_state.llm_coach_key = None
+    if "referee_help" not in st.session_state:
+        st.session_state.referee_help = None
 
 
 def get_setting(name: str, default: str = "") -> str:
@@ -903,6 +907,7 @@ def render_agent_feedback_dialog() -> None:
         st.session_state.gemini_coach_tip = None
         st.session_state.llm_opponent_message = None
         st.session_state.llm_opponent_key = None
+        st.session_state.referee_help = None
         st.session_state.game_phase = next_phase_after_agent_feedback(updated["status"])
         st.rerun()
     elif submitted:
@@ -1001,6 +1006,8 @@ def render_agent_turn() -> None:
         )
         render_number_tiles(state["current_guess"])
 
+    render_referee_helper(state)
+
     if st.button("Enter bulls and cows for my guess", use_container_width=True):
         render_agent_feedback_dialog()
 
@@ -1008,6 +1015,71 @@ def render_agent_turn() -> None:
         st.write(state["reasoning"])
         render_history("Agent turns so far", state["history"])
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_referee_helper(state: dict) -> None:
+    if state.get("current_guess") is None:
+        return
+
+    with st.expander("Need help responding to the agent?", expanded=False):
+        st.caption("Enter your secret number and ask Gemini what bulls/cows to submit.")
+        with st.form("referee_helper_form"):
+            secret = st.text_input(
+                "Your secret number",
+                max_chars=3,
+                placeholder="427",
+                type="password",
+                help="Used to calculate the exact response to the agent's current guess.",
+            )
+            question = st.text_area(
+                "Ask Gemini",
+                value="How many bulls and cows should I respond with?",
+                height=80,
+            )
+            submitted = st.form_submit_button("Ask referee helper")
+
+        if submitted:
+            normalized_secret = secret.strip()
+            if not is_valid_secret(normalized_secret):
+                st.session_state.referee_help = {
+                    "source": "error",
+                    "message": "Enter a valid 3-digit number with unique digits. First digit cannot be 0.",
+                }
+            else:
+                feedback = score_guess(normalized_secret, state["current_guess"])
+                api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
+                result = generate_gemini_referee_help(
+                    secret=normalized_secret,
+                    agent_guess=state["current_guess"],
+                    bulls=feedback.bulls,
+                    cows=feedback.cows,
+                    question=question.strip() or "How many bulls and cows should I respond with?",
+                    api_key=api_key,
+                    model_name=get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
+                    game_memory=build_current_game_memory(),
+                )
+                result["bulls"] = feedback.bulls
+                result["cows"] = feedback.cows
+                result["agent_guess"] = state["current_guess"]
+                st.session_state.referee_help = result
+
+        referee_help = st.session_state.get("referee_help")
+        if referee_help and referee_help.get("agent_guess", state["current_guess"]) == state["current_guess"]:
+            source = referee_help["source"].title()
+            safe_message = escape(referee_help["message"])
+            bulls = referee_help.get("bulls")
+            cows = referee_help.get("cows")
+            if bulls is not None and cows is not None:
+                st.success(f"Submit: {bulls} bulls, {cows} cows")
+            st.markdown(
+                f"""
+                <div class="coach-panel llm-tip">
+                    <p class="coach-title">Referee Helper</p>
+                    <p><strong>{source}:</strong> {safe_message}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 def get_or_create_opponent_message(state: dict) -> dict:

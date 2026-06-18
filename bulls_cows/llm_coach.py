@@ -83,6 +83,68 @@ def build_gemini_coach_reasoning_prompt(notes: dict, game_memory: dict | None = 
     )
 
 
+def build_gemini_referee_prompt(
+    secret: str,
+    agent_guess: str,
+    bulls: int,
+    cows: int,
+    question: str,
+    game_memory: dict | None = None,
+) -> str:
+    return (
+        "You are a friendly Bulls and Cows referee helping the human respond "
+        "to the Opponent Agent.\n"
+        "The app has already calculated the exact feedback. Do not change it.\n"
+        "Explain the answer clearly and briefly. Mention the exact bulls/cows "
+        "the human should submit.\n\n"
+        f"Human secret number: {secret}\n"
+        f"Opponent Agent guess: {agent_guess}\n"
+        f"Exact response: {bulls} bull{'s' if bulls != 1 else ''}, "
+        f"{cows} cow{'s' if cows != 1 else ''}\n"
+        f"Human question: {question}\n\n"
+        f"{format_game_memory_for_prompt(game_memory)}\n\n"
+        "Return one helpful answer, maximum three short sentences."
+    )
+
+
+def generate_gemini_referee_help(
+    secret: str,
+    agent_guess: str,
+    bulls: int,
+    cows: int,
+    question: str,
+    api_key: str | None,
+    model_name: str = DEFAULT_GEMINI_MODEL,
+    game_memory: dict | None = None,
+    llm_factory=None,
+) -> dict:
+    fallback = (
+        f"Respond with {bulls} bull{'s' if bulls != 1 else ''} and "
+        f"{cows} cow{'s' if cows != 1 else ''}."
+    )
+    if not api_key:
+        return {"source": "deterministic", "message": fallback}
+
+    try:
+        llm = llm_factory() if llm_factory else _create_gemini_llm(api_key, model_name)
+        response = llm.invoke(
+            build_gemini_referee_prompt(
+                secret,
+                agent_guess,
+                bulls,
+                cows,
+                question,
+                game_memory,
+            )
+        )
+        message = getattr(response, "content", str(response)).strip()
+        if not message:
+            raise ValueError("Gemini returned an empty referee answer.")
+        return {"source": "gemini", "message": message}
+    except Exception as exc:
+        return {"source": "fallback", "message": fallback, "error": str(exc)}
+
+
 def generate_gemini_agent_message(
     role: str,
     payload: dict,
