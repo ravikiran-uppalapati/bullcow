@@ -160,7 +160,11 @@ class LlmCoachTests(unittest.TestCase):
                     {"turn": 1, "guess": "427", "bulls": 0, "cows": 2},
                 ],
             },
-            "coach": {"suggested_guess": "407", "tip": "Move useful digits around."},
+            "coach": {
+                "suggested_guess": "407",
+                "tip": "Move useful digits around.",
+                "previous_guesses": ["427"],
+            },
             "timeline": [
                 "Agent turn 1 guessed 102 and got 0 bulls, 1 cow.",
                 "Human turn 1 guessed 427 and got 0 bulls, 2 cows.",
@@ -172,7 +176,8 @@ class LlmCoachTests(unittest.TestCase):
         self.assertIn("Current phase: human_turn", text)
         self.assertIn("Agent turn 1 guessed 102", text)
         self.assertIn("Human turn 1 guessed 427", text)
-        self.assertIn("Suggested human guess: 407", text)
+        self.assertIn("Human previous guesses: 427", text)
+        self.assertIn("Suggested human next guess: 407", text)
 
     def test_agent_prompt_includes_game_memory_when_provided(self):
         memory = {
@@ -198,9 +203,16 @@ class LlmCoachTests(unittest.TestCase):
         memory = {
             "phase": "agent_turn",
             "agent": {"current_guess": "102", "candidate_count": 648},
-            "human": {"history": []},
-            "coach": {"suggested_guess": "103", "tip": "Start with different digits."},
-            "timeline": ["Agent turn 1 guessed 102 and got pending feedback."],
+            "human": {"history": [{"turn": 1, "guess": "102", "bulls": 0, "cows": 1}]},
+            "coach": {
+                "suggested_guess": "103",
+                "tip": "Start with different digits.",
+                "previous_guesses": ["102"],
+            },
+            "timeline": [
+                "Agent turn 1 guessed 204 and got pending feedback.",
+                "Human turn 1 guessed 102 and got 0 bulls, 1 cows.",
+            ],
         }
 
         prompt = build_gemini_chat_prompt(
@@ -209,7 +221,8 @@ class LlmCoachTests(unittest.TestCase):
         )
 
         self.assertIn("How should I think about this move?", prompt)
-        self.assertIn("Agent turn 1 guessed 102", prompt)
+        self.assertIn("Human previous guesses: 102", prompt)
+        self.assertIn("Suggested human next guess: 103", prompt)
         self.assertNotIn("Exact feedback available", prompt)
 
     def test_generate_chat_response_uses_injected_llm(self):

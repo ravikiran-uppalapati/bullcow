@@ -15,6 +15,8 @@ def format_game_memory_for_prompt(game_memory: dict | None) -> str:
     human = game_memory.get("human", {})
     coach = game_memory.get("coach", {})
     timeline = game_memory.get("timeline", [])
+    previous_guesses = coach.get("previous_guesses", [])
+    previous_guess_text = ", ".join(previous_guesses) if previous_guesses else "none yet"
     timeline_text = "\n".join(f"- {item}" for item in timeline) if timeline else "- No turns yet."
 
     return (
@@ -24,7 +26,8 @@ def format_game_memory_for_prompt(game_memory: dict | None) -> str:
         f"Agent remaining candidate count: {agent.get('candidate_count')}\n"
         f"Agent latest reasoning: {agent.get('reasoning', '')}\n"
         f"Human next turn number: {human.get('turn')}\n"
-        f"Suggested human guess: {coach.get('suggested_guess')}\n"
+        f"Human previous guesses: {previous_guess_text}\n"
+        f"Suggested human next guess: {coach.get('suggested_guess')}\n"
         f"Coach deterministic tip: {coach.get('tip')}\n"
         "Timeline:\n"
         f"{timeline_text}"
