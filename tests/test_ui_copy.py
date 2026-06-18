@@ -9,9 +9,9 @@ class UiCopyTests(unittest.TestCase):
 
         self.assertEqual(copy["title"], "Ask Coach")
         self.assertEqual(copy["question_label"], "Ask Coach")
-        self.assertEqual(copy["secret_label"], "Optional secret number")
         self.assertEqual(copy["submit_label"], "Ask Coach")
         self.assertNotIn("Gemini", copy["title"])
+        self.assertNotIn("secret_label", copy)
 
     def test_main_screen_hides_advanced_agent_details_by_default(self):
         self.assertFalse(main.should_show_agent_toolbelt_on_main_screen())

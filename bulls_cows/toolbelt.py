@@ -28,7 +28,7 @@ def build_agent_toolbelt(
         {
             "name": "score_guess",
             "label": "Bulls/Cows Scorer",
-            "owner": "Referee Tool",
+            "owner": "Game Engine",
             "status": "used" if agent_history or human_history else "ready",
             "evidence": _latest_score_evidence(latest_agent_turn, latest_human_turn),
         },
@@ -55,8 +55,8 @@ def build_agent_toolbelt(
         },
         {
             "name": "gemini_chat",
-            "label": "Gemini Chat",
-            "owner": "LLM Tool",
+            "label": "Gemini Coach",
+            "owner": "Coach Agent",
             "status": "used" if chat_history else ("ready" if gemini_enabled else "needs key"),
             "evidence": _chat_evidence(chat_history),
         },
@@ -104,5 +104,5 @@ def _candidate_filter_evidence(latest_agent_turn: dict[str, Any], candidate_coun
 
 def _chat_evidence(chat_history: list[dict[str, Any]]) -> str:
     if not chat_history:
-        return "Ask Gemini any game question"
+        return "Ask Coach any game question"
     return f"Last question: {chat_history[-1].get('question', '')}"

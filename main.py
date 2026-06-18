@@ -17,8 +17,6 @@ from bulls_cows.llm_coach import (
     DEFAULT_GEMINI_MODEL,
     generate_gemini_agent_message,
     generate_gemini_chat_response,
-    generate_gemini_coach_tip,
-    generate_gemini_referee_help,
 )
 from bulls_cows.memory import build_game_memory
 from bulls_cows.session_flow import (
@@ -40,30 +38,18 @@ def reset_game() -> None:
     st.session_state.player_history = []
     st.session_state.game_phase = "intro"
     st.session_state.human_feedback = None
-    st.session_state.gemini_coach_tip = None
     st.session_state.llm_opponent_message = None
     st.session_state.llm_opponent_key = None
-    st.session_state.llm_coach_reasoning = None
-    st.session_state.llm_coach_key = None
-    st.session_state.referee_help = None
     st.session_state.gemini_chat_history = []
 
 
 def ensure_session() -> None:
     if "agent_state" not in st.session_state:
         reset_game()
-    if "gemini_coach_tip" not in st.session_state:
-        st.session_state.gemini_coach_tip = None
     if "llm_opponent_message" not in st.session_state:
         st.session_state.llm_opponent_message = None
     if "llm_opponent_key" not in st.session_state:
         st.session_state.llm_opponent_key = None
-    if "llm_coach_reasoning" not in st.session_state:
-        st.session_state.llm_coach_reasoning = None
-    if "llm_coach_key" not in st.session_state:
-        st.session_state.llm_coach_key = None
-    if "referee_help" not in st.session_state:
-        st.session_state.referee_help = None
     if "gemini_chat_history" not in st.session_state:
         st.session_state.gemini_chat_history = []
 
@@ -108,8 +94,6 @@ def get_gemini_chat_copy() -> dict[str, str]:
         "description": "Ask for strategy, rules, or why the agent made a move.",
         "question_label": "Ask Coach",
         "question_placeholder": "Example: I guessed 427 and got 1 cow. What should I try next?",
-        "secret_label": "Optional secret number",
-        "secret_help": "Leave blank for normal Coach chat. Enter your 3-digit secret only if you want exact bulls/cows for the agent guess.",
         "submit_label": "Ask Coach",
     }
 
@@ -719,62 +703,6 @@ def build_current_game_memory(notes: dict | None = None) -> dict:
     )
 
 
-def maybe_generate_llm_coach_reasoning(notes: dict, game_memory: dict) -> None:
-    api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
-    if not api_key:
-        return
-
-    model_name = get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
-    agent_history_count = len(game_memory["agent"]["history"])
-    human_history_count = len(game_memory["human"]["history"])
-    coach_key = (
-        f"{notes['attempts']}:{notes['suggested_guess']}:{agent_history_count}:"
-        f"{human_history_count}:{game_memory['phase']}:{model_name}"
-    )
-    if st.session_state.get("llm_coach_key") == coach_key:
-        return
-
-    fallback = f"Try {notes['suggested_guess']}. {notes['tip']}"
-    result = generate_gemini_agent_message(
-        "coach",
-        {"notes": notes, "game_memory": game_memory, "fallback": fallback},
-        api_key=api_key,
-        model_name=model_name,
-    )
-    st.session_state.llm_coach_reasoning = result
-    st.session_state.llm_coach_key = coach_key
-    record_llm_agent_message(
-        "coach",
-        result["source"],
-        result["message"],
-        {
-            "attempts": notes["attempts"],
-            "suggested_guess": notes["suggested_guess"],
-            "previous_guesses": notes["previous_guesses"],
-            "game_memory": game_memory,
-        },
-    )
-
-
-def render_gemini_coach_button(notes: dict) -> None:
-    api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
-    model_name = get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
-
-    if not api_key:
-        st.caption("Set GOOGLE_API_KEY or GEMINI_API_KEY to enable Gemini Coach.")
-        return
-
-    if st.button("Ask Gemini Coach", use_container_width=True):
-        with st.spinner("Gemini Coach is reading the clue notebook..."):
-            st.session_state.gemini_coach_tip = generate_gemini_coach_tip(
-                notes,
-                api_key=api_key,
-                model_name=model_name,
-                game_memory=build_current_game_memory(notes),
-            )
-        st.rerun()
-
-
 def render_clue_board(clue_notes: list[dict]) -> None:
     clue_rows = "".join(
         f"""
@@ -818,44 +746,31 @@ def render_gemini_chat_panel() -> None:
     copy = get_gemini_chat_copy()
     with st.expander(copy["title"], expanded=False):
         st.caption(copy["description"])
-        current_guess = st.session_state.agent_state.get("current_guess")
         with st.form("coach_question_form"):
             question = st.text_area(
                 copy["question_label"],
                 placeholder=copy["question_placeholder"],
                 height=96,
             )
-            secret = st.text_input(
-                copy["secret_label"],
-                placeholder="Only if you want exact scoring, e.g. 427",
-                help=copy["secret_help"],
-            )
             submitted = st.form_submit_button(copy["submit_label"])
 
         if submitted:
             normalized_question = question.strip()
-            normalized_secret = secret.strip()
             if not normalized_question:
                 st.warning("Type a question for Coach first.")
             else:
-                exact_feedback = None
-                if normalized_secret:
-                    exact_feedback = build_optional_exact_feedback(normalized_secret, current_guess)
-
                 api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
                 result = generate_gemini_chat_response(
                     question=normalized_question,
                     api_key=api_key,
                     model_name=get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
                     game_memory=build_current_game_memory(),
-                    exact_feedback=exact_feedback,
                 )
                 st.session_state.gemini_chat_history.append(
                     {
                         "question": normalized_question,
                         "answer": result["message"],
                         "source": result["source"],
-                        "exact_feedback": exact_feedback,
                     }
                 )
                 record_llm_agent_message(
@@ -864,7 +779,6 @@ def render_gemini_chat_panel() -> None:
                     result["message"],
                     {
                         "question": normalized_question,
-                        "exact_feedback": exact_feedback,
                         "game_memory": build_current_game_memory(),
                     },
                 )
@@ -872,12 +786,6 @@ def render_gemini_chat_panel() -> None:
 
         if st.session_state.gemini_chat_history:
             latest = st.session_state.gemini_chat_history[-1]
-            if latest.get("exact_feedback"):
-                feedback = latest["exact_feedback"]
-                st.success(
-                    f"Exact response: {feedback['bulls']} bulls, {feedback['cows']} cows "
-                    f"for agent guess {feedback['agent_guess']}."
-                )
             st.markdown(
                 f"""
                 <div class="coach-panel llm-tip">
@@ -930,18 +838,6 @@ def render_agent_toolbelt_panel() -> None:
     )
 
 
-def build_optional_exact_feedback(secret_text: str, agent_guess: str | None) -> dict | None:
-    normalized = secret_text.strip()
-    if not normalized or agent_guess is None or not is_valid_secret(normalized):
-        return None
-    feedback = score_guess(normalized, agent_guess)
-    return {
-        "bulls": feedback.bulls,
-        "cows": feedback.cows,
-        "agent_guess": agent_guess,
-    }
-
-
 def render_history(title: str, history: list[dict]) -> None:
     st.subheader(title)
     if not history:
@@ -989,10 +885,8 @@ def render_agent_feedback_dialog() -> None:
             CandidateFeedback(int(bulls), int(cows)),
         )
         st.session_state.agent_state = updated
-        st.session_state.gemini_coach_tip = None
         st.session_state.llm_opponent_message = None
         st.session_state.llm_opponent_key = None
-        st.session_state.referee_help = None
         st.session_state.game_phase = next_phase_after_agent_feedback(updated["status"])
         st.rerun()
     elif submitted:
@@ -1099,69 +993,6 @@ def render_agent_turn() -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def render_referee_helper(state: dict) -> None:
-    if state.get("current_guess") is None:
-        return
-
-    with st.expander("Need help responding to the agent?", expanded=False):
-        st.caption("Use this calculator only when you want exact bulls/cows for the agent's current guess.")
-        with st.form("referee_helper_form"):
-            secret = st.text_input(
-                "Your secret number for exact scoring",
-                placeholder="427",
-                help="Used to calculate the exact response to the agent's current guess.",
-            )
-            question = st.text_area(
-                "Optional explanation request",
-                value="How many bulls and cows should I respond with?",
-                height=80,
-            )
-            submitted = st.form_submit_button("Calculate response")
-
-        if submitted:
-            normalized_secret = secret.strip()
-            if not is_valid_secret(normalized_secret):
-                st.session_state.referee_help = {
-                    "source": "error",
-                    "message": "Enter a valid 3-digit number with unique digits. First digit cannot be 0.",
-                }
-            else:
-                feedback = score_guess(normalized_secret, state["current_guess"])
-                api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
-                result = generate_gemini_referee_help(
-                    secret=normalized_secret,
-                    agent_guess=state["current_guess"],
-                    bulls=feedback.bulls,
-                    cows=feedback.cows,
-                    question=question.strip() or "How many bulls and cows should I respond with?",
-                    api_key=api_key,
-                    model_name=get_setting("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
-                    game_memory=build_current_game_memory(),
-                )
-                result["bulls"] = feedback.bulls
-                result["cows"] = feedback.cows
-                result["agent_guess"] = state["current_guess"]
-                st.session_state.referee_help = result
-
-        referee_help = st.session_state.get("referee_help")
-        if referee_help and referee_help.get("agent_guess", state["current_guess"]) == state["current_guess"]:
-            source = referee_help["source"].title()
-            safe_message = escape(referee_help["message"])
-            bulls = referee_help.get("bulls")
-            cows = referee_help.get("cows")
-            if bulls is not None and cows is not None:
-                st.success(f"Submit: {bulls} bulls, {cows} cows")
-            st.markdown(
-                f"""
-                <div class="coach-panel llm-tip">
-                    <p class="coach-title">Referee Helper</p>
-                    <p><strong>{source}:</strong> {safe_message}</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-
 def get_or_create_opponent_message(state: dict) -> dict:
     api_key = get_setting("GOOGLE_API_KEY") or get_setting("GEMINI_API_KEY")
     guess = state.get("current_guess")
@@ -1264,9 +1095,6 @@ def render_human_turn() -> None:
                 won,
                 len(st.session_state.player_history),
             )
-            st.session_state.gemini_coach_tip = None
-            st.session_state.llm_coach_reasoning = None
-            st.session_state.llm_coach_key = None
             st.session_state.game_phase = "human_result"
             st.rerun()
 
